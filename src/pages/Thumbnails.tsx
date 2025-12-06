@@ -5,10 +5,11 @@ import {
   FileText,
   Plus,
   CheckCircle2,
-  Circle
+  Circle,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ImageUploader } from '@/components/ImageUploader';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -30,7 +31,6 @@ export default function Thumbnails() {
   const { user } = useAuth();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [thumbnails, setThumbnails] = useState<{ [key: string]: Thumbnail[] }>({});
-  const [newThumbnailUrl, setNewThumbnailUrl] = useState('');
   const [selectedScript, setSelectedScript] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,15 +71,18 @@ export default function Thumbnails() {
     setLoading(false);
   };
 
-  const addThumbnail = async () => {
-    if (!newThumbnailUrl || !selectedScript || !user) return;
+  const addThumbnail = async (imageUrl: string) => {
+    if (!selectedScript || !user) {
+      toast.error('Selecione um roteiro primeiro');
+      return;
+    }
 
     const { data, error } = await supabase
       .from('script_thumbnails')
       .insert({
         script_id: selectedScript,
         user_id: user.id,
-        thumbnail_url: newThumbnailUrl,
+        thumbnail_url: imageUrl,
         is_selected: false,
       })
       .select()
@@ -92,7 +95,6 @@ export default function Thumbnails() {
         ...prev,
         [selectedScript]: [...(prev[selectedScript] || []), data],
       }));
-      setNewThumbnailUrl('');
       toast.success('Thumbnail adicionada');
     }
   };
@@ -120,6 +122,23 @@ export default function Thumbnails() {
     toast.success('Thumbnail selecionada!');
   };
 
+  const deleteThumbnail = async (scriptId: string, thumbnailId: string) => {
+    const { error } = await supabase
+      .from('script_thumbnails')
+      .delete()
+      .eq('id', thumbnailId);
+
+    if (error) {
+      toast.error('Erro ao excluir thumbnail');
+    } else {
+      setThumbnails(prev => ({
+        ...prev,
+        [scriptId]: (prev[scriptId] || []).filter(t => t.id !== thumbnailId),
+      }));
+      toast.success('Thumbnail excluída');
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -143,11 +162,15 @@ export default function Thumbnails() {
       {/* Add Thumbnail */}
       <div className="glass rounded-xl p-6 mb-8">
         <h2 className="font-semibold text-foreground mb-4">Adicionar Thumbnail</h2>
-        <div className="flex gap-4">
+        
+        <div className="mb-4">
+          <label className="block text-sm text-muted-foreground mb-2">
+            Selecione o roteiro:
+          </label>
           <select
             value={selectedScript || ''}
-            onChange={(e) => setSelectedScript(e.target.value)}
-            className="flex-1 bg-muted border border-border rounded-lg px-4 py-2 text-foreground"
+            onChange={(e) => setSelectedScript(e.target.value || null)}
+            className="w-full md:w-auto min-w-[300px] bg-muted border border-border rounded-lg px-4 py-2 text-foreground"
           >
             <option value="">Selecione um roteiro...</option>
             {scripts.map((script) => (
@@ -156,21 +179,18 @@ export default function Thumbnails() {
               </option>
             ))}
           </select>
-          <Input
-            value={newThumbnailUrl}
-            onChange={(e) => setNewThumbnailUrl(e.target.value)}
-            placeholder="URL da thumbnail..."
-            className="flex-1 bg-muted border-border"
-          />
-          <Button 
-            variant="fire" 
-            onClick={addThumbnail}
-            disabled={!selectedScript || !newThumbnailUrl}
-          >
-            <Plus className="w-4 h-4" />
-            Adicionar
-          </Button>
         </div>
+
+        {selectedScript ? (
+          <ImageUploader
+            userId={user?.id}
+            onImageUploaded={addThumbnail}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Selecione um roteiro para adicionar thumbnails
+          </p>
+        )}
       </div>
 
       {/* Scripts with Thumbnails */}
@@ -232,6 +252,16 @@ export default function Thumbnails() {
                         <Circle className="w-8 h-8 text-foreground" />
                       )}
                     </div>
+                    {/* Delete button */}
+                    <button
+                      className="absolute top-2 right-2 p-1 bg-destructive/80 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteThumbnail(script.id, thumb.id);
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3 text-destructive-foreground" />
+                    </button>
                   </div>
                 ))}
 

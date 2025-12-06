@@ -36,16 +36,21 @@ export function useAuth() {
   };
 
   const signUp = async (email: string, password: string) => {
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = `${window.location.origin}/dashboard`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
       },
     });
-    return { error };
+
+    // Check if email confirmation is required
+    // If user is created but session is null, confirmation is needed
+    const needsConfirmation = !error && data.user && !data.session;
+
+    return { error, needsConfirmation };
   };
 
   const signOut = async () => {

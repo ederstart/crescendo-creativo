@@ -129,7 +129,7 @@ export default function ScriptEditor() {
 
   const fetchReferences = async () => {
     const { data } = await supabase
-      .from('references')
+      .from('video_references')
       .select('*')
       .eq('script_id', id)
       .order('created_at', { ascending: false });
@@ -141,7 +141,7 @@ export default function ScriptEditor() {
     if (!newRefUrl || !script.id || !user) return;
 
     const { data, error } = await supabase
-      .from('references')
+      .from('video_references')
       .insert({
         script_id: script.id,
         user_id: user.id,
@@ -162,7 +162,7 @@ export default function ScriptEditor() {
 
   const deleteReference = async (refId: string) => {
     const { error } = await supabase
-      .from('references')
+      .from('video_references')
       .delete()
       .eq('id', refId);
 
