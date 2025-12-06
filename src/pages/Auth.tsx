@@ -33,15 +33,18 @@ export default function Auth() {
           navigate('/dashboard');
         }
       } else {
-        const { error } = await signUp(email, password);
+        const { error, needsConfirmation } = await signUp(email, password);
         if (error) {
           if (error.message.includes('already registered')) {
             toast.error('Este email já está cadastrado');
           } else {
             toast.error(error.message);
           }
-        } else {
+        } else if (needsConfirmation) {
           toast.success('Conta criada! Verifique seu email para confirmar.');
+        } else {
+          toast.success('Conta criada! Bem-vindo!');
+          navigate('/dashboard');
         }
       }
     } finally {

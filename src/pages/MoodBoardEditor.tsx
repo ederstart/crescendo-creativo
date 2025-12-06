@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
-  Plus, 
   ZoomIn, 
   ZoomOut,
   Trash2,
@@ -11,9 +10,11 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ImageUploader } from '@/components/ImageUploader';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useImageUpload } from '@/hooks/useImageUpload';
 import { toast } from 'sonner';
 
 interface BoardItem {
@@ -35,20 +36,23 @@ interface MoodBoard {
 
 export default function MoodBoardEditor() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { uploadFromClipboard } = useImageUpload(user?.id);
+  const isNew = id === 'new';
   
   const [board, setBoard] = useState<MoodBoard | null>(null);
+  const [boardName, setBoardName] = useState('Novo Mood Board');
   const [items, setItems] = useState<BoardItem[]>([]);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const [newImageUrl, setNewImageUrl] = useState('');
 
   const saveItems = useCallback(async (itemsToSave: BoardItem[]) => {
-    if (!user || !id) return;
+    if (!user || !board?.id) return;
 
     for (const item of itemsToSave) {
       await supabase
@@ -62,25 +66,80 @@ export default function MoodBoardEditor() {
         })
         .eq('id', item.id);
     }
-  }, [user, id]);
+  }, [user, board?.id]);
 
   useAutoSave(items, saveItems, 15000);
 
   useEffect(() => {
-    if (id && user) {
-      fetchBoard();
-      fetchItems();
+    if (user) {
+      if (isNew) {
+        createNewBoard();
+      } else if (id) {
+        fetchBoard();
+        fetchItems();
+      }
     }
-  }, [id, user]);
+  }, [id, user, isNew]);
+
+  // Handle paste anywhere on canvas
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (!e.clipboardData || !user || !board?.id) return;
+      
+      const pasteItems = e.clipboardData.items;
+      for (let i = 0; i < pasteItems.length; i++) {
+        if (pasteItems[i].type.indexOf('image') !== -1) {
+          e.preventDefault();
+          const file = pasteItems[i].getAsFile();
+          if (file) {
+            const url = await uploadFromClipboard(e.clipboardData as unknown as DataTransfer);
+            if (url) {
+              addImageToBoard(url);
+            }
+          }
+          break;
+        }
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [user, board?.id, items]);
+
+  const createNewBoard = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('mood_boards')
+      .insert({
+        user_id: user.id,
+        name: 'Novo Mood Board',
+        type: 'general',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error('Erro ao criar mood board');
+      navigate('/mood-boards');
+    } else {
+      setBoard(data);
+      setBoardName(data.name);
+      navigate(`/mood-boards/${data.id}`, { replace: true });
+    }
+  };
 
   const fetchBoard = async () => {
     const { data } = await supabase
       .from('mood_boards')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    setBoard(data);
+    if (data) {
+      setBoard(data);
+      setBoardName(data.name);
+    }
   };
 
   const fetchItems = async () => {
@@ -93,15 +152,15 @@ export default function MoodBoardEditor() {
     setItems(data || []);
   };
 
-  const addImage = async () => {
-    if (!newImageUrl || !user || !id) return;
+  const addImageToBoard = async (imageUrl: string) => {
+    if (!user || !board?.id) return;
 
     const { data, error } = await supabase
       .from('mood_board_items')
       .insert({
-        mood_board_id: id,
+        mood_board_id: board.id,
         user_id: user.id,
-        image_url: newImageUrl,
+        image_url: imageUrl,
         position_x: 100 + Math.random() * 200,
         position_y: 100 + Math.random() * 200,
         width: 200,
@@ -115,7 +174,6 @@ export default function MoodBoardEditor() {
       toast.error('Erro ao adicionar imagem');
     } else {
       setItems([...items, data]);
-      setNewImageUrl('');
       toast.success('Imagem adicionada');
     }
   };
@@ -190,18 +248,11 @@ export default function MoodBoardEditor() {
 
           <div className="flex items-center gap-4">
             {/* Add Image */}
-            <div className="flex gap-2">
-              <Input
-                value={newImageUrl}
-                onChange={(e) => setNewImageUrl(e.target.value)}
-                placeholder="URL da imagem..."
-                className="w-64 bg-muted border-border text-sm"
-              />
-              <Button variant="secondary" onClick={addImage} disabled={!newImageUrl}>
-                <Plus className="w-4 h-4" />
-                Adicionar
-              </Button>
-            </div>
+            <ImageUploader
+              userId={user?.id}
+              onImageUploaded={addImageToBoard}
+              compact
+            />
 
             {/* Zoom Controls */}
             <div className="flex items-center gap-2 bg-muted rounded-lg p-1">
@@ -247,10 +298,13 @@ export default function MoodBoardEditor() {
         >
           {items.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
+              <div className="text-center max-w-md">
                 <ImageIcon className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-                <p className="text-muted-foreground">
-                  Adicione imagens usando a URL acima
+                <p className="text-muted-foreground mb-2">
+                  Adicione imagens usando o uploader acima
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Você também pode colar imagens diretamente (Ctrl+V)
                 </p>
               </div>
             </div>
