@@ -1,16 +1,23 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useAISettings } from '@/hooks/useAISettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { User, Lock, Database } from 'lucide-react';
+import { User, Lock, Database, Bot, Eye, EyeOff } from 'lucide-react';
 
 export default function Settings() {
   const { user, signOut } = useAuth();
+  const { settings, saveSettings } = useAISettings();
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
+  const [groqKey, setGroqKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [whiskToken, setWhiskToken] = useState('');
+  const [whiskSessionId, setWhiskSessionId] = useState('');
 
   const handlePasswordChange = async () => {
     if (!newPassword || newPassword.length < 6) {
@@ -96,7 +103,82 @@ export default function Settings() {
           >
             Atualizar Senha
           </Button>
+      </div>
+
+      {/* AI Settings Section */}
+      <div className="glass rounded-xl p-6 mb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 gradient-fire rounded-lg flex items-center justify-center">
+            <Bot className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground">APIs de IA</h2>
+            <p className="text-sm text-muted-foreground">Configure suas chaves de API</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto"
+            onClick={() => setShowKeys(!showKeys)}
+          >
+            {showKeys ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </Button>
         </div>
+
+        <div className="space-y-4">
+          <div>
+            <Label>Groq API Key</Label>
+            <Input
+              type={showKeys ? 'text' : 'password'}
+              defaultValue={settings?.groq_api_key || ''}
+              onChange={(e) => setGroqKey(e.target.value)}
+              placeholder="gsk_..."
+              className="bg-muted border-border mt-1 font-mono text-sm"
+            />
+          </div>
+          <div>
+            <Label>Gemini API Key</Label>
+            <Input
+              type={showKeys ? 'text' : 'password'}
+              defaultValue={settings?.gemini_api_key || ''}
+              onChange={(e) => setGeminiKey(e.target.value)}
+              placeholder="AIza..."
+              className="bg-muted border-border mt-1 font-mono text-sm"
+            />
+          </div>
+          <div>
+            <Label>Whisk Token</Label>
+            <Input
+              type={showKeys ? 'text' : 'password'}
+              defaultValue={settings?.whisk_token || ''}
+              onChange={(e) => setWhiskToken(e.target.value)}
+              placeholder="Token do Google Labs Whisk"
+              className="bg-muted border-border mt-1 font-mono text-sm"
+            />
+          </div>
+          <div>
+            <Label>Whisk Session ID</Label>
+            <Input
+              type={showKeys ? 'text' : 'password'}
+              defaultValue={settings?.whisk_session_id || ''}
+              onChange={(e) => setWhiskSessionId(e.target.value)}
+              placeholder="__Secure-1PSID do cookie"
+              className="bg-muted border-border mt-1 font-mono text-sm"
+            />
+          </div>
+          <Button 
+            variant="secondary"
+            onClick={() => saveSettings({
+              groq_api_key: groqKey || settings?.groq_api_key,
+              gemini_api_key: geminiKey || settings?.gemini_api_key,
+              whisk_token: whiskToken || settings?.whisk_token,
+              whisk_session_id: whiskSessionId || settings?.whisk_session_id,
+            })}
+          >
+            Salvar Configurações de IA
+          </Button>
+        </div>
+      </div>
       </div>
 
       {/* Database Info */}

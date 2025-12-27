@@ -13,6 +13,7 @@ import MoodBoards from "./pages/MoodBoards";
 import MoodBoardEditor from "./pages/MoodBoardEditor";
 import Thumbnails from "./pages/Thumbnails";
 import Settings from "./pages/Settings";
+import AIStudio from "./pages/AIStudio";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
             <Route path="/mood-boards/:id" element={<MoodBoardEditor />} />
             <Route path="/thumbnails" element={<Thumbnails />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/ai-studio" element={<AIStudio />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

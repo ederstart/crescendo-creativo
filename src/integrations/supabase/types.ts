@@ -14,6 +14,110 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          input_content: string | null
+          model_used: string | null
+          output_content: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          input_content?: string | null
+          model_used?: string | null
+          output_content?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          input_content?: string | null
+          model_used?: string | null
+          output_content?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_settings: {
+        Row: {
+          created_at: string
+          gemini_api_key: string | null
+          groq_api_key: string | null
+          id: string
+          updated_at: string
+          user_id: string
+          whisk_session_id: string | null
+          whisk_token: string | null
+        }
+        Insert: {
+          created_at?: string
+          gemini_api_key?: string | null
+          groq_api_key?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+          whisk_session_id?: string | null
+          whisk_token?: string | null
+        }
+        Update: {
+          created_at?: string
+          gemini_api_key?: string | null
+          groq_api_key?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+          whisk_session_id?: string | null
+          whisk_token?: string | null
+        }
+        Relationships: []
+      }
+      generated_images: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string
+          prompt_used: string | null
+          scene_description: string | null
+          script_id: string | null
+          subject_image_url: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url: string
+          prompt_used?: string | null
+          scene_description?: string | null
+          script_id?: string | null
+          subject_image_url?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string
+          prompt_used?: string | null
+          scene_description?: string | null
+          script_id?: string | null
+          subject_image_url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_images_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mood_board_items: {
         Row: {
           created_at: string | null
@@ -128,6 +232,39 @@ export type Database = {
           id?: string
           name?: string
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      prompt_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_default: boolean | null
+          name: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_default?: boolean | null
+          name: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          type?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
