@@ -7,7 +7,8 @@ import {
   Settings, 
   LogOut,
   Home,
-  Plus
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Roteiros', path: '/scripts' },
+  { icon: Sparkles, label: 'AI Studio', path: '/ai-studio' },
   { icon: Image, label: 'Mood Boards', path: '/mood-boards' },
   { icon: Link2, label: 'Thumbnails', path: '/thumbnails' },
 ];
