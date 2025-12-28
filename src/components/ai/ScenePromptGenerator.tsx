@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Progress } from '@/components/ui/progress';
 import { Loader2, Wand2, Copy, Check, Star, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -32,10 +33,9 @@ interface ScenePromptGeneratorProps {
   onFavoriteModel?: (model: string) => void;
 }
 
+const BATCH_SIZE = 30;
+
 export function ScenePromptGenerator({
-  groqApiKey,
-  geminiApiKey,
-  openrouterApiKey,
   defaultStylePrompt = '',
   preferredModel = 'groq',
   onPromptsGenerated,
@@ -50,6 +50,11 @@ export function ScenePromptGenerator({
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  
+  // Batch progress tracking
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
+  const [batchProgress, setBatchProgress] = useState(0);
   
   // Script selection
   const [scripts, setScripts] = useState<Script[]>([]);
@@ -92,6 +97,38 @@ export function ScenePromptGenerator({
     ? Math.ceil(scriptContent.length / charactersPerScene)
     : numberOfScenes;
 
+  // Divide script into proportional parts for batch processing
+  const divideScriptIntoParts = (content: string, numParts: number): string[] => {
+    if (numParts <= 1) return [content];
+    
+    // Split by paragraphs first to avoid cutting mid-sentence
+    const paragraphs = content.split(/\n\n+/);
+    const totalLength = content.length;
+    const targetPartLength = Math.ceil(totalLength / numParts);
+    
+    const parts: string[] = [];
+    let currentPart = '';
+    let currentLength = 0;
+    
+    for (const paragraph of paragraphs) {
+      if (currentLength + paragraph.length > targetPartLength && currentPart.length > 0 && parts.length < numParts - 1) {
+        parts.push(currentPart.trim());
+        currentPart = paragraph;
+        currentLength = paragraph.length;
+      } else {
+        currentPart += (currentPart ? '\n\n' : '') + paragraph;
+        currentLength += paragraph.length;
+      }
+    }
+    
+    // Add the last part
+    if (currentPart.trim()) {
+      parts.push(currentPart.trim());
+    }
+    
+    return parts;
+  };
+
   const handleGenerate = async () => {
     if (!scriptContent.trim()) {
       toast.error('Selecione um roteiro primeiro');
@@ -99,30 +136,99 @@ export function ScenePromptGenerator({
     }
 
     setLoading(true);
+    setGeneratedPrompts([]);
+    setBatchProgress(0);
+    setCurrentBatch(0);
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
-        body: {
-          scriptContent,
-          splitMode,
-          numberOfScenes: splitMode === 'scenes' ? numberOfScenes : undefined,
-          charactersPerScene: splitMode === 'characters' ? charactersPerScene : undefined,
-          model,
-          stylePrompt: stylePrompt || undefined,
-        },
-      });
+      const targetScenes = splitMode === 'characters' 
+        ? Math.ceil(scriptContent.length / charactersPerScene)
+        : numberOfScenes;
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      // Determine if we need batch processing
+      if (targetScenes <= BATCH_SIZE) {
+        // Single request for small amounts
+        const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
+          body: {
+            scriptContent,
+            splitMode,
+            numberOfScenes: targetScenes,
+            charactersPerScene: splitMode === 'characters' ? charactersPerScene : undefined,
+            model,
+            stylePrompt: stylePrompt || undefined,
+          },
+        });
 
-      setGeneratedPrompts(data.scenes);
-      onPromptsGenerated(data.scenes);
-      toast.success('Prompts de cenas gerados!');
+        if (error) throw error;
+        if (data.error) throw new Error(data.error);
+
+        setGeneratedPrompts(data.scenes);
+        onPromptsGenerated(data.scenes);
+        toast.success(`${data.scenes.length} prompts de cenas gerados!`);
+      } else {
+        // Batch processing for large amounts
+        const numBatches = Math.ceil(targetScenes / BATCH_SIZE);
+        setTotalBatches(numBatches);
+        
+        // Divide script into parts
+        const scriptParts = divideScriptIntoParts(scriptContent, numBatches);
+        
+        const allScenes: ScenePrompt[] = [];
+        let sceneNumberOffset = 0;
+        
+        for (let i = 0; i < scriptParts.length; i++) {
+          setCurrentBatch(i + 1);
+          setBatchProgress(Math.round((i / scriptParts.length) * 100));
+          
+          const scenesInThisBatch = i === scriptParts.length - 1 
+            ? targetScenes - (BATCH_SIZE * i) 
+            : BATCH_SIZE;
+          
+          const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
+            body: {
+              scriptPart: scriptParts[i],
+              splitMode: 'scenes',
+              scenesPerBatch: Math.min(scenesInThisBatch, BATCH_SIZE),
+              model,
+              stylePrompt: stylePrompt || undefined,
+              batchIndex: i,
+              totalBatches: scriptParts.length,
+            },
+          });
+
+          if (error) throw error;
+          if (data.error) throw new Error(data.error);
+
+          // Renumber scenes with correct offset
+          const renumberedScenes = data.scenes.map((scene: ScenePrompt, idx: number) => ({
+            ...scene,
+            number: sceneNumberOffset + idx + 1,
+          }));
+          
+          sceneNumberOffset += data.scenes.length;
+          allScenes.push(...renumberedScenes);
+          
+          // Update UI progressively
+          setGeneratedPrompts([...allScenes]);
+          
+          // Small delay between batches to avoid rate limiting
+          if (i < scriptParts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        
+        setBatchProgress(100);
+        onPromptsGenerated(allScenes);
+        toast.success(`${allScenes.length} prompts de cenas gerados em ${scriptParts.length} lotes!`);
+      }
     } catch (error) {
       console.error('Error generating scene prompts:', error);
-      toast.error('Erro ao gerar prompts de cenas');
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      toast.error(`Erro ao gerar prompts: ${errorMessage}`);
     } finally {
       setLoading(false);
+      setCurrentBatch(0);
+      setTotalBatches(0);
     }
   };
 
@@ -138,7 +244,6 @@ export function ScenePromptGenerator({
     await navigator.clipboard.writeText(allPrompts);
     toast.success('Todos os prompts copiados!');
   };
-
 
   const isFavorite = model === preferredModel;
 
@@ -252,11 +357,16 @@ export function ScenePromptGenerator({
           <Input
             type="number"
             min={1}
-            max={50}
+            max={500}
             value={numberOfScenes}
             onChange={(e) => setNumberOfScenes(parseInt(e.target.value) || 5)}
             className="mt-1"
           />
+          {numberOfScenes > BATCH_SIZE && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Será processado em {Math.ceil(numberOfScenes / BATCH_SIZE)} lotes de até {BATCH_SIZE} cenas
+            </p>
+          )}
         </div>
       ) : (
         <div>
@@ -273,6 +383,7 @@ export function ScenePromptGenerator({
           {scriptContent && (
             <p className="text-xs text-muted-foreground mt-1">
               Estimativa: ~{estimatedScenes} cenas para {scriptContent.length} caracteres
+              {estimatedScenes > BATCH_SIZE && ` (${Math.ceil(estimatedScenes / BATCH_SIZE)} lotes)`}
             </p>
           )}
         </div>
@@ -292,6 +403,20 @@ export function ScenePromptGenerator({
         </p>
       </div>
 
+      {/* Progress indicator for batch processing */}
+      {loading && totalBatches > 1 && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>Processando lote {currentBatch} de {totalBatches}</span>
+            <span>{batchProgress}%</span>
+          </div>
+          <Progress value={batchProgress} className="h-2" />
+          <p className="text-xs text-muted-foreground">
+            {generatedPrompts.length} cenas geradas até agora...
+          </p>
+        </div>
+      )}
+
       <Button
         onClick={handleGenerate}
         disabled={loading || !scriptContent}
@@ -301,7 +426,7 @@ export function ScenePromptGenerator({
         {loading ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Gerando Prompts...
+            {totalBatches > 1 ? `Gerando... (${currentBatch}/${totalBatches})` : 'Gerando Prompts...'}
           </>
         ) : (
           <>
