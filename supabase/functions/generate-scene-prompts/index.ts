@@ -88,29 +88,27 @@ serve(async (req) => {
       ? `Esta é a parte ${batchIndex + 1} de ${totalBatches} do roteiro. Gere prompts apenas para esta parte específica, continuando a narrativa.`
       : '';
 
-    const systemPrompt = `Você é um especialista em criar prompts para geração de imagens. 
-Sua tarefa é analisar um roteiro de vídeo e criar exatamente ${sceneCount} prompts detalhados para geração de cenas/ilustrações.
+    const systemPrompt = `You are an expert at creating image generation prompts.
+Your task is to analyze a video script and create exactly ${sceneCount} detailed prompts for scene/illustration generation.
 
 ${batchContext}
 
-Regras:
-1. Cada prompt deve ser visual e descritivo
-2. Inclua detalhes de iluminação, estilo artístico, ângulo de câmera
-3. Mantenha consistência visual entre as cenas
-4. Os prompts devem estar em inglês para melhor compatibilidade
-5. Retorne APENAS um JSON válido com array de prompts, sem texto adicional
-6. Divida este trecho do roteiro em exatamente ${sceneCount} partes proporcionais
-7. NÃO inclua descrições longas em português, apenas uma frase curta de no máximo 15 palavras
+Rules:
+1. Each prompt must be highly visual and descriptive
+2. Include details about lighting, artistic style, camera angle, composition
+3. Maintain visual consistency between scenes
+4. Prompts must be in English
+5. Return ONLY a valid JSON array with prompts, no additional text
+6. Divide this script section into exactly ${sceneCount} proportional parts
 
-${stylePrompt ? `Estilo base para todas as cenas: ${stylePrompt}` : ''}
+${stylePrompt ? `Base style for all scenes: ${stylePrompt}` : ''}
 
-Formato de resposta (JSON VÁLIDO APENAS):
+Response format (VALID JSON ONLY):
 {
   "scenes": [
     {
       "number": 1,
-      "description": "Frase curta da cena",
-      "prompt": "Detailed image generation prompt in English"
+      "prompt": "Detailed image generation prompt in English describing the scene visually"
     }
   ]
 }`;

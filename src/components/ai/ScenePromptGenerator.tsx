@@ -13,8 +13,8 @@ import { useAuth } from '@/hooks/useAuth';
 
 interface ScenePrompt {
   number: number;
-  description: string;
   prompt: string;
+  scriptExcerpt?: string; // Extracted from script by the app
 }
 
 interface Script {
@@ -129,6 +129,34 @@ export function ScenePromptGenerator({
     return parts;
   };
 
+  // Extract script excerpts for each scene (divides script proportionally)
+  const extractScriptExcerpts = (content: string, numScenes: number): string[] => {
+    const paragraphs = content.split(/\n+/).filter(p => p.trim());
+    const excerpts: string[] = [];
+    
+    if (paragraphs.length >= numScenes) {
+      // More paragraphs than scenes - group them
+      const paragraphsPerScene = Math.ceil(paragraphs.length / numScenes);
+      for (let i = 0; i < numScenes; i++) {
+        const start = i * paragraphsPerScene;
+        const end = Math.min(start + paragraphsPerScene, paragraphs.length);
+        const excerpt = paragraphs.slice(start, end).join(' ').trim();
+        excerpts.push(excerpt.length > 100 ? excerpt.substring(0, 100) + '...' : excerpt);
+      }
+    } else {
+      // Fewer paragraphs than scenes - divide by character count
+      const charsPerScene = Math.ceil(content.length / numScenes);
+      for (let i = 0; i < numScenes; i++) {
+        const start = i * charsPerScene;
+        const end = Math.min(start + charsPerScene, content.length);
+        const excerpt = content.substring(start, end).trim();
+        excerpts.push(excerpt.length > 100 ? excerpt.substring(0, 100) + '...' : excerpt);
+      }
+    }
+    
+    return excerpts;
+  };
+
   const handleGenerate = async () => {
     if (!scriptContent.trim()) {
       toast.error('Selecione um roteiro primeiro');
@@ -162,9 +190,16 @@ export function ScenePromptGenerator({
         if (error) throw error;
         if (data.error) throw new Error(data.error);
 
-        setGeneratedPrompts(data.scenes);
-        onPromptsGenerated(data.scenes);
-        toast.success(`${data.scenes.length} prompts de cenas gerados!`);
+        // Add script excerpts to each scene (extracted by the app, not the AI)
+        const excerpts = extractScriptExcerpts(scriptContent, data.scenes.length);
+        const scenesWithExcerpts = data.scenes.map((scene: ScenePrompt, idx: number) => ({
+          ...scene,
+          scriptExcerpt: excerpts[idx] || '',
+        }));
+
+        setGeneratedPrompts(scenesWithExcerpts);
+        onPromptsGenerated(scenesWithExcerpts);
+        toast.success(`${scenesWithExcerpts.length} prompts de cenas gerados!`);
       } else {
         // Batch processing for large amounts
         const numBatches = Math.ceil(targetScenes / BATCH_SIZE);
@@ -199,10 +234,14 @@ export function ScenePromptGenerator({
           if (error) throw error;
           if (data.error) throw new Error(data.error);
 
-          // Renumber scenes with correct offset
+          // Add script excerpts for this batch
+          const batchExcerpts = extractScriptExcerpts(scriptParts[i], data.scenes.length);
+          
+          // Renumber scenes with correct offset and add excerpts
           const renumberedScenes = data.scenes.map((scene: ScenePrompt, idx: number) => ({
             ...scene,
             number: sceneNumberOffset + idx + 1,
+            scriptExcerpt: batchExcerpts[idx] || '',
           }));
           
           sceneNumberOffset += data.scenes.length;
@@ -452,9 +491,14 @@ export function ScenePromptGenerator({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">
-                      Cena {scene.number}: {scene.description}
+                      CENA {scene.number}:
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1 font-mono break-all">
+                    {scene.scriptExcerpt && (
+                      <p className="text-xs text-muted-foreground mt-1 italic">
+                        {scene.scriptExcerpt}
+                      </p>
+                    )}
+                    <p className="text-sm text-foreground mt-2 font-mono break-all">
                       {scene.prompt}
                     </p>
                   </div>
