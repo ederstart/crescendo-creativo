@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,10 +13,60 @@ serve(async (req) => {
   }
 
   try {
-    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, apiKey, stylePrompt } = await req.json();
+    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, stylePrompt } = await req.json();
     
-    if (!scriptContent || !apiKey) {
-      throw new Error('Script content and API key are required');
+    if (!scriptContent) {
+      throw new Error('Script content is required');
+    }
+
+    // Get authorization header to identify user
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      throw new Error('Authorization required');
+    }
+
+    // Create Supabase client to fetch API keys from database
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get user from JWT token
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    
+    if (userError || !user) {
+      throw new Error('Invalid authentication');
+    }
+
+    // Fetch API keys from ai_settings table
+    const { data: settings, error: settingsError } = await supabase
+      .from('ai_settings')
+      .select('groq_api_key, gemini_api_key, openrouter_api_key')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('Error fetching AI settings:', settingsError);
+      throw new Error('Failed to fetch AI settings');
+    }
+
+    if (!settings) {
+      throw new Error('AI settings not configured. Please add your API keys in Settings.');
+    }
+
+    // Get the appropriate API key based on model
+    let apiKey: string | null = null;
+    if (model === 'groq') {
+      apiKey = settings.groq_api_key;
+    } else if (model === 'gemini') {
+      apiKey = settings.gemini_api_key;
+    } else if (model === 'qwen') {
+      apiKey = settings.openrouter_api_key;
+    }
+
+    if (!apiKey) {
+      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
+      throw new Error(`API key for ${modelName} not configured. Please add it in Settings.`);
     }
 
     // Determine scene count based on split mode
@@ -50,6 +101,8 @@ Formato de resposta (JSON):
 
     let response;
     let generatedText = '';
+
+    console.log(`Generating scene prompts using model: ${model}`);
 
     if (model === 'groq') {
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -149,6 +202,8 @@ Formato de resposta (JSON):
         throw new Error('Failed to parse scene prompts');
       }
     }
+
+    console.log(`Successfully generated ${scenes.length} scene prompts`);
 
     return new Response(JSON.stringify({ scenes, model }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

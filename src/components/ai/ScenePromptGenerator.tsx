@@ -98,13 +98,6 @@ export function ScenePromptGenerator({
       return;
     }
 
-    const apiKey = model === 'groq' ? groqApiKey : model === 'gemini' ? geminiApiKey : openrouterApiKey;
-    if (!apiKey) {
-      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
-      toast.error(`Configure a API key do ${modelName} nas configurações`);
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -115,7 +108,6 @@ export function ScenePromptGenerator({
           numberOfScenes: splitMode === 'scenes' ? numberOfScenes : undefined,
           charactersPerScene: splitMode === 'characters' ? charactersPerScene : undefined,
           model,
-          apiKey,
           stylePrompt: stylePrompt || undefined,
         },
       });
@@ -147,13 +139,7 @@ export function ScenePromptGenerator({
     toast.success('Todos os prompts copiados!');
   };
 
-  const getApiKey = (m: string) => {
-    if (m === 'groq') return groqApiKey;
-    if (m === 'gemini') return geminiApiKey;
-    return openrouterApiKey;
-  };
 
-  const hasApiKey = !!getApiKey(model);
   const isFavorite = model === preferredModel;
 
   return (
@@ -308,7 +294,7 @@ export function ScenePromptGenerator({
 
       <Button
         onClick={handleGenerate}
-        disabled={loading || !hasApiKey || !scriptContent}
+        disabled={loading || !scriptContent}
         className="w-full"
         variant="fire"
       >
