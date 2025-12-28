@@ -1,7 +1,20 @@
 project_id = "qmvctgyletddzwozxtqz"
 
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
 [functions.generate-script]
 verify_jwt = false
 
 [functions.generate-whisk-image]
+verify_jwt = false
+
+[functions.generate-scene-prompts]
+verify_jwt = false
+
+[functions.validate-whisk-token]
 verify_jwt = false

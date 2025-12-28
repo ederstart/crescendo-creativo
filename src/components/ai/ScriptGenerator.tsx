@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -10,19 +10,20 @@ import { supabase } from '@/lib/supabase';
 interface ScriptGeneratorProps {
   groqApiKey?: string;
   geminiApiKey?: string;
+  openrouterApiKey?: string;
   defaultPrompt?: string;
   onGenerated: (content: string, model: string) => void;
 }
 
 export function ScriptGenerator({ 
   groqApiKey, 
-  geminiApiKey, 
+  geminiApiKey,
+  openrouterApiKey,
   defaultPrompt = '',
   onGenerated 
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
-  const [systemPrompt, setSystemPrompt] = useState(defaultPrompt);
-  const [model, setModel] = useState<'groq' | 'gemini'>('groq');
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>('groq');
   const [loading, setLoading] = useState(false);
   const [attachedContent, setAttachedContent] = useState('');
   const [attachedFileName, setAttachedFileName] = useState('');
@@ -32,7 +33,6 @@ export function ScriptGenerator({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file type
     const validTypes = ['text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (!validTypes.includes(file.type) && !file.name.endsWith('.txt')) {
       toast.error('Apenas arquivos .txt ou .doc/.docx são suportados');
@@ -51,13 +51,14 @@ export function ScriptGenerator({
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
-      toast.error('Digite um prompt');
+      toast.error('Digite um pedido');
       return;
     }
 
-    const apiKey = model === 'groq' ? groqApiKey : geminiApiKey;
+    const apiKey = model === 'groq' ? groqApiKey : model === 'gemini' ? geminiApiKey : openrouterApiKey;
     if (!apiKey) {
-      toast.error(`Configure a API key do ${model === 'groq' ? 'Groq' : 'Gemini'} nas configurações`);
+      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
+      toast.error(`Configure a API key do ${modelName} nas configurações`);
       return;
     }
 
@@ -69,7 +70,7 @@ export function ScriptGenerator({
           prompt,
           model,
           apiKey,
-          systemPrompt,
+          systemPrompt: defaultPrompt,
           attachedContent: attachedContent || undefined,
         },
       });
@@ -87,13 +88,19 @@ export function ScriptGenerator({
     }
   };
 
-  const hasApiKey = model === 'groq' ? !!groqApiKey : !!geminiApiKey;
+  const getApiKey = (m: string) => {
+    if (m === 'groq') return groqApiKey;
+    if (m === 'gemini') return geminiApiKey;
+    return openrouterApiKey;
+  };
+
+  const hasApiKey = !!getApiKey(model);
 
   return (
     <div className="space-y-4">
       <div>
         <Label>Modelo de IA</Label>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini')}>
+        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
           <SelectTrigger className="mt-1">
             <SelectValue />
           </SelectTrigger>
@@ -106,23 +113,18 @@ export function ScriptGenerator({
             </SelectItem>
             <SelectItem value="gemini">
               <div className="flex items-center gap-2">
-                <span>Gemini 1.5 Flash</span>
+                <span>Gemini 2.5 Flash</span>
                 {!geminiApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
+              </div>
+            </SelectItem>
+            <SelectItem value="qwen">
+              <div className="flex items-center gap-2">
+                <span>Qwen3 Coder (OpenRouter)</span>
+                {!openrouterApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
               </div>
             </SelectItem>
           </SelectContent>
         </Select>
-      </div>
-
-      <div>
-        <Label>Prompt do Sistema (Personalidade da IA)</Label>
-        <Textarea
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
-          placeholder="Ex: Você é um roteirista profissional de vídeos para YouTube..."
-          rows={3}
-          className="mt-1 font-mono text-sm"
-        />
       </div>
 
       <div>
@@ -167,7 +169,7 @@ export function ScriptGenerator({
             value={attachedContent}
             onChange={(e) => setAttachedContent(e.target.value)}
             placeholder="Cole aqui o conteúdo que a IA deve usar como referência, ou anexe um arquivo..."
-            rows={4}
+            rows={3}
             className="font-mono text-sm"
           />
         )}
@@ -205,7 +207,7 @@ export function ScriptGenerator({
 
       {!hasApiKey && (
         <p className="text-sm text-destructive text-center">
-          Configure a API Key do {model === 'groq' ? 'Groq' : 'Gemini'} nas configurações
+          Configure a API Key nas configurações
         </p>
       )}
     </div>

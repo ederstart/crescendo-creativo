@@ -12,23 +12,39 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, model, apiKey, systemPrompt, attachedContent } = await req.json();
+    const { scriptContent, numberOfScenes, model, apiKey, stylePrompt } = await req.json();
     
-    if (!prompt || !apiKey) {
-      throw new Error('Prompt and API key are required');
+    if (!scriptContent || !apiKey) {
+      throw new Error('Script content and API key are required');
     }
+
+    const systemPrompt = `Você é um especialista em criar prompts para geração de imagens. 
+Sua tarefa é analisar um roteiro de vídeo e criar ${numberOfScenes || 5} prompts detalhados para geração de cenas/ilustrações.
+
+Regras:
+1. Cada prompt deve ser visual e descritivo
+2. Inclua detalhes de iluminação, estilo artístico, ângulo de câmera
+3. Mantenha consistência visual entre as cenas
+4. Os prompts devem estar em inglês para melhor compatibilidade
+5. Retorne APENAS um JSON com array de prompts, sem explicações
+
+${stylePrompt ? `Estilo base para todas as cenas: ${stylePrompt}` : ''}
+
+Formato de resposta (JSON):
+{
+  "scenes": [
+    {
+      "number": 1,
+      "description": "Breve descrição da cena em português",
+      "prompt": "Detailed image generation prompt in English"
+    }
+  ]
+}`;
 
     let response;
     let generatedText = '';
 
-    // Build the full prompt with attached content if provided
-    let fullPrompt = prompt;
-    if (attachedContent) {
-      fullPrompt = `Conteúdo de referência:\n${attachedContent}\n\n${prompt}`;
-    }
-
     if (model === 'groq') {
-      // Groq API
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -38,10 +54,11 @@ serve(async (req) => {
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
-            { role: 'system', content: systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.' },
-            { role: 'user', content: fullPrompt }
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Roteiro:\n\n${scriptContent}` }
           ],
           max_tokens: 4096,
+          response_format: { type: 'json_object' },
         }),
       });
 
@@ -55,7 +72,6 @@ serve(async (req) => {
       generatedText = data.choices[0].message.content;
 
     } else if (model === 'gemini') {
-      // Gemini API - Updated to 2.5 Flash
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
@@ -64,11 +80,12 @@ serve(async (req) => {
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `${systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.'}\n\n${fullPrompt}`
+              text: `${systemPrompt}\n\nRoteiro:\n\n${scriptContent}`
             }]
           }],
           generationConfig: {
             maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
           }
         }),
       });
@@ -83,7 +100,6 @@ serve(async (req) => {
       generatedText = data.candidates[0].content.parts[0].text;
 
     } else if (model === 'qwen') {
-      // OpenRouter API - Qwen3 Coder
       response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -93,8 +109,8 @@ serve(async (req) => {
         body: JSON.stringify({
           model: 'qwen/qwen3-coder:free',
           messages: [
-            { role: 'system', content: systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.' },
-            { role: 'user', content: fullPrompt }
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Roteiro:\n\n${scriptContent}` }
           ],
         }),
       });
@@ -107,17 +123,32 @@ serve(async (req) => {
 
       const data = await response.json();
       generatedText = data.choices[0].message.content;
-
     } else {
-      throw new Error('Invalid model specified. Use "groq", "gemini", or "qwen".');
+      throw new Error('Invalid model specified');
     }
 
-    return new Response(JSON.stringify({ generatedText, model }), {
+    // Parse the JSON response
+    let scenes;
+    try {
+      const parsed = JSON.parse(generatedText);
+      scenes = parsed.scenes || parsed;
+    } catch {
+      // If JSON parsing fails, try to extract JSON from the text
+      const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        scenes = parsed.scenes || parsed;
+      } else {
+        throw new Error('Failed to parse scene prompts');
+      }
+    }
+
+    return new Response(JSON.stringify({ scenes, model }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in generate-script function:', error);
+    console.error('Error in generate-scene-prompts function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
