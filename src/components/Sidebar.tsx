@@ -8,7 +8,8 @@ import {
   LogOut,
   Home,
   Plus,
-  Sparkles
+  Sparkles,
+  Subtitles
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ const navItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Roteiros', path: '/scripts' },
   { icon: Sparkles, label: 'AI Studio', path: '/ai-studio' },
+  { icon: Subtitles, label: 'Legendas', path: '/subtitles' },
   { icon: Image, label: 'Mood Boards', path: '/mood-boards' },
   { icon: Link2, label: 'Thumbnails', path: '/thumbnails' },
 ];

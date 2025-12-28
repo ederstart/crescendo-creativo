@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,8 @@ import {
   Trash2, 
   Copy, 
   Check,
-  Plus
+  Plus,
+  Subtitles as SubtitlesIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -31,10 +33,6 @@ interface Subtitle {
   created_at: string;
 }
 
-interface SRTGeneratorProps {
-  selectedScripts?: Script[];
-}
-
 function splitTextSafely(text: string, maxChars: number): string[] {
   const parts: string[] = [];
   let currentIndex = 0;
@@ -42,9 +40,7 @@ function splitTextSafely(text: string, maxChars: number): string[] {
   while (currentIndex < text.length) {
     let endIndex = Math.min(currentIndex + maxChars, text.length);
     
-    // If we're not at the end and the cut would be in the middle of a word
     if (endIndex < text.length) {
-      // Find the last space before the limit
       const lastSpace = text.lastIndexOf(' ', endIndex);
       if (lastSpace > currentIndex) {
         endIndex = lastSpace;
@@ -56,7 +52,7 @@ function splitTextSafely(text: string, maxChars: number): string[] {
       parts.push(part);
     }
     
-    currentIndex = endIndex + 1; // Skip the space
+    currentIndex = endIndex + 1;
   }
   
   return parts;
@@ -77,7 +73,7 @@ function generateSRT(text: string, charsPerSubtitle: number = 500, intervalSecon
   
   parts.forEach((part, index) => {
     const startTime = index * intervalSeconds;
-    const endTime = startTime + intervalSeconds - 1; // 1 second gap
+    const endTime = startTime + intervalSeconds - 1;
     
     srtLines.push(`${index + 1}`);
     srtLines.push(`${formatTime(startTime)} --> ${formatTime(endTime)}`);
@@ -88,18 +84,29 @@ function generateSRT(text: string, charsPerSubtitle: number = 500, intervalSecon
   return srtLines.join('\n');
 }
 
-export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
+export default function Subtitles() {
   const { user } = useAuth();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('generate');
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  
+  // Scripts from navigation state
+  const [selectedScripts, setSelectedScripts] = useState<Script[]>([]);
   
   // Manual generation state
   const [manualTitle, setManualTitle] = useState('');
   const [manualContent, setManualContent] = useState('');
   const [generatedSRT, setGeneratedSRT] = useState('');
-  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.selectedScripts) {
+      setSelectedScripts(location.state.selectedScripts);
+      setActiveTab('generate');
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (user) {
@@ -132,33 +139,36 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
     setGenerating(true);
     
     try {
-      // Combine all script contents
-      const combinedContent = selectedScripts
-        .map(s => s.content || '')
-        .filter(c => c.trim())
-        .join('\n\n');
-      
-      const srt = generateSRT(combinedContent);
-      const title = selectedScripts.length === 1 
-        ? `Legenda - ${selectedScripts[0].title}`
-        : `Legenda - ${selectedScripts.length} roteiros`;
-      
-      const { error } = await supabase
-        .from('subtitles')
-        .insert({
-          user_id: user?.id,
-          title,
-          content: srt,
-          source_script_ids: selectedScripts.map(s => s.id),
-        });
+      // Generate individual SRT for each script
+      const insertPromises = selectedScripts.map(async (script) => {
+        if (!script.content?.trim()) return null;
+        
+        const srt = generateSRT(script.content);
+        const title = `Legenda - ${script.title}`;
+        
+        return supabase
+          .from('subtitles')
+          .insert({
+            user_id: user?.id,
+            title,
+            content: srt,
+            source_script_ids: [script.id],
+          });
+      });
 
-      if (error) throw error;
+      const results = await Promise.all(insertPromises.filter(Boolean));
       
-      toast.success('Legenda SRT gerada com sucesso!');
+      const errors = results.filter(r => r?.error);
+      if (errors.length > 0) {
+        throw new Error('Alguns SRTs falharam ao gerar');
+      }
+      
+      toast.success(`${selectedScripts.length} legenda(s) SRT gerada(s) com sucesso!`);
+      setSelectedScripts([]);
       fetchSubtitles();
       setActiveTab('saved');
     } catch (error: any) {
-      toast.error('Erro ao gerar legenda: ' + error.message);
+      toast.error('Erro ao gerar legendas: ' + error.message);
     } finally {
       setGenerating(false);
     }
@@ -224,15 +234,27 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
     URL.revokeObjectURL(url);
   };
 
-  const copySRT = async (content: string) => {
+  const copySRT = async (content: string, id: string) => {
     await navigator.clipboard.writeText(content);
-    setCopied(true);
+    setCopied(id);
     toast.success('SRT copiado!');
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-3">
+            <SubtitlesIcon className="w-7 h-7 text-primary" />
+            Legendas SRT
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Gere legendas SRT a partir dos seus roteiros
+          </p>
+        </div>
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="generate">Gerar de Roteiros</TabsTrigger>
@@ -242,25 +264,30 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="generate" className="space-y-4 mt-4">
+        <TabsContent value="generate" className="space-y-4 mt-6">
           {selectedScripts.length > 0 ? (
             <div className="space-y-4">
               <div className="bg-muted/50 rounded-lg p-4">
-                <Label className="text-sm text-muted-foreground">Roteiros Selecionados</Label>
-                <div className="mt-2 space-y-2">
+                <Label className="text-sm text-muted-foreground">Roteiros Selecionados ({selectedScripts.length})</Label>
+                <div className="mt-3 space-y-2">
                   {selectedScripts.map((script) => (
-                    <div key={script.id} className="flex items-center gap-2 text-sm">
+                    <div key={script.id} className="flex items-center gap-2 text-sm bg-background rounded-md p-2">
                       <FileText className="w-4 h-4 text-primary" />
-                      <span>{script.title}</span>
+                      <span className="flex-1">{script.title}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {script.content?.length || 0} caracteres
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
               
-              <div className="text-sm text-muted-foreground">
-                <p>• Cada legenda terá no máximo 500 caracteres</p>
-                <p>• Intervalo de 30 segundos entre legendas</p>
-                <p>• Palavras não serão cortadas no meio</p>
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm space-y-1">
+                <p className="font-medium text-primary">Configurações de geração:</p>
+                <p className="text-muted-foreground">• Cada legenda terá no máximo 500 caracteres</p>
+                <p className="text-muted-foreground">• Intervalo de 30 segundos entre legendas</p>
+                <p className="text-muted-foreground">• Palavras não serão cortadas no meio</p>
+                <p className="text-muted-foreground">• Cada roteiro gerará um arquivo SRT individual</p>
               </div>
               
               <Button 
@@ -268,6 +295,7 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
                 disabled={generating}
                 variant="fire"
                 className="w-full"
+                size="lg"
               >
                 {generating ? (
                   <>
@@ -277,21 +305,23 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
                 ) : (
                   <>
                     <Plus className="w-4 h-4 mr-2" />
-                    Gerar SRT dos Roteiros Selecionados
+                    Gerar {selectedScripts.length} SRT(s) Individual(is)
                   </>
                 )}
               </Button>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Selecione roteiros na aba "Roteiros" para gerar legendas</p>
-              <p className="text-sm mt-2">Use os checkboxes para selecionar múltiplos roteiros</p>
+            <div className="text-center py-12 text-muted-foreground">
+              <FileText className="w-16 h-16 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">Nenhum roteiro selecionado</p>
+              <p className="text-sm mt-2">
+                Vá até a aba "Roteiros" e use os checkboxes para selecionar os roteiros que deseja converter em SRT.
+              </p>
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="manual" className="space-y-4 mt-4">
+        <TabsContent value="manual" className="space-y-4 mt-6">
           <div>
             <Label>Título da Legenda</Label>
             <Input
@@ -308,7 +338,7 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
               value={manualContent}
               onChange={(e) => setManualContent(e.target.value)}
               placeholder="Cole aqui o texto do roteiro para converter em SRT..."
-              rows={10}
+              rows={12}
               className="mt-1 font-mono text-sm"
             />
           </div>
@@ -318,6 +348,7 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
             disabled={generating || !manualTitle.trim() || !manualContent.trim()}
             variant="fire"
             className="w-full"
+            size="lg"
           >
             {generating ? (
               <>
@@ -339,9 +370,9 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
                 <Button 
                   size="sm" 
                   variant="secondary"
-                  onClick={() => copySRT(generatedSRT)}
+                  onClick={() => copySRT(generatedSRT, 'manual')}
                 >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied === 'manual' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
               <Textarea
@@ -354,30 +385,37 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="saved" className="mt-4">
+        <TabsContent value="saved" className="mt-6">
           {loading ? (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
             </div>
           ) : subtitles.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhuma legenda gerada ainda</p>
+            <div className="text-center py-12 text-muted-foreground">
+              <SubtitlesIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">Nenhuma legenda gerada ainda</p>
+              <p className="text-sm mt-2">Gere legendas a partir de roteiros ou manualmente</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4">
               {subtitles.map((subtitle) => (
                 <div 
                   key={subtitle.id} 
-                  className="bg-muted rounded-lg p-4 group"
+                  className="bg-card border border-border rounded-lg p-4 hover:border-primary/30 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-foreground">{subtitle.title}</h4>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(subtitle.created_at).toLocaleDateString('pt-BR')}
+                        Criado em {new Date(subtitle.created_at).toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </p>
-                      <pre className="text-xs text-muted-foreground mt-2 line-clamp-3 font-mono whitespace-pre-wrap">
+                      <pre className="text-xs text-muted-foreground mt-3 line-clamp-3 font-mono whitespace-pre-wrap bg-muted p-2 rounded">
                         {subtitle.content.substring(0, 200)}...
                       </pre>
                     </div>
@@ -385,14 +423,16 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
                       <Button 
                         size="icon" 
                         variant="ghost"
-                        onClick={() => copySRT(subtitle.content)}
+                        onClick={() => copySRT(subtitle.content, subtitle.id)}
+                        title="Copiar SRT"
                       >
-                        <Copy className="w-4 h-4" />
+                        {copied === subtitle.id ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
                       </Button>
                       <Button 
                         size="icon" 
                         variant="ghost"
                         onClick={() => downloadSRT(subtitle)}
+                        title="Baixar SRT"
                       >
                         <Download className="w-4 h-4" />
                       </Button>
@@ -401,6 +441,7 @@ export function SRTGenerator({ selectedScripts = [] }: SRTGeneratorProps) {
                         variant="ghost"
                         className="text-destructive hover:text-destructive"
                         onClick={() => deleteSubtitle(subtitle.id)}
+                        title="Excluir"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

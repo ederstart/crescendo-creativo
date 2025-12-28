@@ -189,7 +189,10 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               Limpar Seleção
             </Button>
             <Button variant="fire" size="sm" asChild>
-              <Link to="/ai-studio?tab=subtitles" state={{ selectedScriptIds: Array.from(selectedIds) }}>
+              <Link 
+                to="/subtitles" 
+                state={{ selectedScripts: scripts.filter(s => selectedIds.has(s.id)) }}
+              >
                 <FileText className="w-4 h-4 mr-2" />
                 Gerar SRT
               </Link>
