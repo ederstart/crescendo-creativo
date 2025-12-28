@@ -242,8 +242,8 @@ export default function Subtitles() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-8 animate-fade-in">
+      <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-3">
             <SubtitlesIcon className="w-7 h-7 text-primary" />
