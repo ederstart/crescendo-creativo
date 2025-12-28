@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,9 @@ const cleanScenePrefix = (prompt: string): string => {
   return prompt.replace(/^(?:CENA|Cena|cena)\s*\d{1,3}\s*:\s*/i, '').trim();
 };
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 3000;
+
 export function ImageGallery({
   googleCookie,
   styleTemplate: initialStyleTemplate,
@@ -53,6 +56,10 @@ export function ImageGallery({
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<string>('all');
   const [savingStyle, setSavingStyle] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  
+  // Ref to control stopping batch generation
+  const stopBatchRef = useRef(false);
 
   // Sync with prop when it changes
   useEffect(() => {
@@ -78,15 +85,15 @@ export function ImageGallery({
   const albums = Object.keys(groupedImages);
   const displayImages = activeAlbum === 'all' ? images : groupedImages[activeAlbum] || [];
 
-  const handleGenerate = async (promptText: string) => {
+  const handleGenerate = async (promptText: string, retryCount = 0): Promise<boolean> => {
     if (!googleCookie) {
       toast.error('Configure o Cookie do Google nas configurações');
-      return;
+      return false;
     }
 
     if (!promptText.trim()) {
       toast.error('Digite um prompt');
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -107,11 +114,18 @@ export function ImageGallery({
       if (error) throw error;
       
       if (data.error) {
+        // Check if we should retry
+        if (retryCount < MAX_RETRIES) {
+          toast.warning(`Erro na geração, tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          return handleGenerate(promptText, retryCount + 1);
+        }
+        
         toast.error(data.error);
         if (data.suggestion) {
           toast.info(data.suggestion);
         }
-        return;
+        return false;
       }
 
       // Convert base64 to data URL for display
@@ -128,9 +142,19 @@ export function ImageGallery({
 
       toast.success('Imagem gerada com IMAGEN_3_5!');
       setPrompt('');
+      return true;
     } catch (error) {
       console.error('Error generating image:', error);
-      toast.error('Erro ao gerar imagem');
+      
+      // Retry on network/server errors
+      if (retryCount < MAX_RETRIES) {
+        toast.warning(`Erro na geração, tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return handleGenerate(promptText, retryCount + 1);
+      }
+      
+      toast.error('Erro ao gerar imagem após várias tentativas');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -143,17 +167,49 @@ export function ImageGallery({
       return;
     }
 
+    // Reset stop flag
+    stopBatchRef.current = false;
+
     const sceneCount = prompts.filter(p => /^(?:CENA|Cena|cena)\s*\d{1,3}\s*:/i.test(p)).length || prompts.length;
     toast.info(`Detectados ${sceneCount} prompts para gerar...`);
     
+    setBatchProgress({ current: 0, total: prompts.length });
+    
     for (let i = 0; i < prompts.length; i++) {
+      // Check if user requested to stop
+      if (stopBatchRef.current) {
+        toast.info(`Geração interrompida. ${i} de ${prompts.length} imagens geradas.`);
+        break;
+      }
+      
+      setBatchProgress({ current: i + 1, total: prompts.length });
       toast.info(`Gerando imagem ${i + 1} de ${prompts.length}...`);
-      await handleGenerate(prompts[i]);
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between requests
+      
+      const success = await handleGenerate(prompts[i]);
+      
+      // If failed after all retries and user wants to stop on error, break
+      if (!success && stopBatchRef.current) {
+        break;
+      }
+      
+      // Wait between requests (only if not stopped and not last)
+      if (!stopBatchRef.current && i < prompts.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
-    toast.success('Todas as imagens foram geradas!');
+    setBatchProgress(null);
+    
+    if (!stopBatchRef.current) {
+      toast.success('Todas as imagens foram geradas!');
+    }
+    
     setBatchPrompts('');
+  };
+
+  const handleStopBatch = () => {
+    stopBatchRef.current = true;
+    toast.info('Parando geração após a imagem atual...');
   };
 
   const toggleImageSelection = (id: string) => {
@@ -318,25 +374,55 @@ export function ImageGallery({
               placeholder="Prompt 1&#10;Prompt 2&#10;Prompt 3"
               rows={6}
               className="mt-1 font-mono text-sm"
+              disabled={loading}
             />
-            <Button
-              onClick={handleBatchGenerate}
-              disabled={loading || !hasCredentials}
-              className="w-full mt-2"
-              variant="fire"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Gerando...
-                </>
-              ) : (
-                <>
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  Gerar Todas (IMAGEN_3_5)
-                </>
+            
+            {batchProgress && (
+              <div className="mt-2 p-2 bg-muted rounded-lg">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Progresso: {batchProgress.current} de {batchProgress.total}</span>
+                  <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+                </div>
+                <div className="w-full bg-muted-foreground/20 rounded-full h-2 mt-1">
+                  <div 
+                    className="bg-primary h-2 rounded-full transition-all" 
+                    style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            
+            <div className="flex gap-2 mt-2">
+              <Button
+                onClick={handleBatchGenerate}
+                disabled={loading || !hasCredentials}
+                className="flex-1"
+                variant="fire"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando {batchProgress ? `${batchProgress.current}/${batchProgress.total}` : '...'}
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    Gerar Todas (IMAGEN_3_5)
+                  </>
+                )}
+              </Button>
+              
+              {loading && (
+                <Button
+                  onClick={handleStopBatch}
+                  variant="destructive"
+                  className="px-4"
+                >
+                  <StopCircle className="w-4 h-4 mr-2" />
+                  Parar
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         ) : (
           <div>
