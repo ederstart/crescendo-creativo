@@ -26,7 +26,7 @@ export default function AIStudio() {
   const { user } = useAuth();
   const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
-  const { images, saveImage, deleteImage, deleteMultiple } = useGeneratedImages();
+  const { images, saveImage, deleteImage, deleteMultiple, refetch: refetchImages } = useGeneratedImages();
   
   const [generatedScript, setGeneratedScript] = useState(() => {
     return localStorage.getItem(SCRIPT_STORAGE_KEY) || '';
@@ -301,6 +301,7 @@ export default function AIStudio() {
               onSaveStyleTemplate={async (template) => {
                 await saveSettings({ style_template: template });
               }}
+              onRefetch={refetchImages}
             />
           </div>
         </TabsContent>
