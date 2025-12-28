@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Captions } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Layers } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -13,25 +13,16 @@ import { ScriptGenerator } from '@/components/ai/ScriptGenerator';
 import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
-import { SRTGenerator } from '@/components/ai/SRTGenerator';
 import { toast } from 'sonner';
-import { NavLink, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
 const SCRIPT_STORAGE_KEY = 'ai_studio_generated_script';
 const SCRIPT_TITLE_STORAGE_KEY = 'ai_studio_script_title';
 
-interface Script {
-  id: string;
-  title: string;
-  content: string;
-}
-
 export default function AIStudio() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
@@ -46,30 +37,7 @@ export default function AIStudio() {
   const [selectedScriptPrompt, setSelectedScriptPrompt] = useState('');
   const [selectedScenePrompt, setSelectedScenePrompt] = useState('');
   const [savingScript, setSavingScript] = useState(false);
-  const [selectedScriptsForSRT, setSelectedScriptsForSRT] = useState<Script[]>([]);
-  
-  // Handle tab from URL
-  const tabFromUrl = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(tabFromUrl || 'script');
-
-  // Load scripts from navigation state
-  useEffect(() => {
-    const loadSelectedScripts = async () => {
-      const state = location.state as { selectedScriptIds?: string[] } | null;
-      if (state?.selectedScriptIds && state.selectedScriptIds.length > 0) {
-        const { data } = await supabase
-          .from('scripts')
-          .select('id, title, content')
-          .in('id', state.selectedScriptIds);
-        
-        if (data) {
-          setSelectedScriptsForSRT(data);
-          setActiveTab('subtitles');
-        }
-      }
-    };
-    loadSelectedScripts();
-  }, [location.state]);
+  const [activeTab, setActiveTab] = useState('script');
 
   useEffect(() => {
     if (generatedScript) {
@@ -169,7 +137,7 @@ export default function AIStudio() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">AI Studio</h1>
-          <p className="text-muted-foreground mt-1">Gere roteiros, cenas, imagens e legendas com IA</p>
+          <p className="text-muted-foreground mt-1">Gere roteiros, cenas e imagens com IA</p>
         </div>
         <Button variant="ghost" asChild>
           <NavLink to="/settings">
@@ -180,7 +148,7 @@ export default function AIStudio() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full max-w-3xl grid-cols-5">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="script" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Roteiro
@@ -196,10 +164,6 @@ export default function AIStudio() {
           <TabsTrigger value="images" className="flex items-center gap-2">
             <Image className="w-4 h-4" />
             Imagens
-          </TabsTrigger>
-          <TabsTrigger value="subtitles" className="flex items-center gap-2">
-            <Captions className="w-4 h-4" />
-            Legendas
           </TabsTrigger>
         </TabsList>
 
@@ -338,15 +302,6 @@ export default function AIStudio() {
           </div>
         </TabsContent>
 
-        <TabsContent value="subtitles">
-          <div className="glass rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Gerador de Legendas SRT</h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              Transforme roteiros em arquivos SRT com intervalos de 30 segundos e máximo de 500 caracteres por legenda.
-            </p>
-            <SRTGenerator selectedScripts={selectedScriptsForSRT} />
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   );
