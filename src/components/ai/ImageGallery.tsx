@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,12 @@ interface ImageGalleryProps {
   onDeleteMultiple: (ids: string[]) => void;
 }
 
+// Helper function to clean "Cena X:" prefix from prompts
+const cleanScenePrefix = (prompt: string): string => {
+  // Remove "Cena X:" or "CENA X:" prefix where X is 1-999
+  return prompt.replace(/^(?:CENA|Cena|cena)\s*\d{1,3}\s*:\s*/i, '').trim();
+};
+
 export function ImageGallery({
   whiskToken,
   whiskSessionId,
@@ -37,11 +43,25 @@ export function ImageGallery({
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
+  const [styleTemplate, setStyleTemplate] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [batchPrompts, setBatchPrompts] = useState('');
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<string>('all');
+
+  // Load saved style template from localStorage
+  useEffect(() => {
+    const savedStyle = localStorage.getItem('whisk-style-template');
+    if (savedStyle) {
+      setStyleTemplate(savedStyle);
+    }
+  }, []);
+
+  const saveStyleTemplate = () => {
+    localStorage.setItem('whisk-style-template', styleTemplate);
+    toast.success('Template de estilo salvo!');
+  };
 
   // Group images by date for album-like experience
   const groupedImages = images.reduce((acc, img) => {
@@ -68,9 +88,17 @@ export function ImageGallery({
     setLoading(true);
 
     try {
+      // Clean the "Cena X:" prefix from the prompt
+      const cleanedPrompt = cleanScenePrefix(promptText);
+      
+      // Combine style template with prompt if style exists
+      const finalPrompt = styleTemplate.trim() 
+        ? `${styleTemplate.trim()}, ${cleanedPrompt}` 
+        : cleanedPrompt;
+
       const { data, error } = await supabase.functions.invoke('generate-whisk-image', {
         body: {
-          prompt: promptText,
+          prompt: finalPrompt,
           token: whiskToken,
           sessionId: whiskSessionId,
           subjectImageUrl: subjectImageUrl || undefined,
@@ -89,8 +117,8 @@ export function ImageGallery({
 
       await onImageGenerated({
         image_url: data.imageUrl,
-        prompt_used: promptText,
-        scene_description: promptText.substring(0, 100),
+        prompt_used: finalPrompt,
+        scene_description: cleanedPrompt.substring(0, 100),
         subject_image_url: subjectImageUrl || undefined,
       });
 
@@ -111,7 +139,9 @@ export function ImageGallery({
       return;
     }
 
-    toast.info(`Gerando ${prompts.length} imagens...`);
+    // Count how many prompts there are (based on "Cena X:" pattern or just lines)
+    const sceneCount = prompts.filter(p => /^(?:CENA|Cena|cena)\s*\d{1,3}\s*:/i.test(p)).length || prompts.length;
+    toast.info(`Detectados ${sceneCount} prompts para gerar...`);
     
     for (let i = 0; i < prompts.length; i++) {
       toast.info(`Gerando imagem ${i + 1} de ${prompts.length}...`);
@@ -225,6 +255,30 @@ export function ImageGallery({
             placeholder="URL da imagem do personagem para consistência..."
             className="mt-1"
           />
+        </div>
+
+        <div>
+          <Label>Template de Estilo</Label>
+          <div className="flex gap-2 mt-1">
+            <Textarea
+              value={styleTemplate}
+              onChange={(e) => setStyleTemplate(e.target.value)}
+              placeholder="Ex: cartoon style, white background, 16:9 aspect ratio, high quality, detailed illustration..."
+              rows={2}
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={saveStyleTemplate}
+              title="Salvar template de estilo"
+            >
+              <Save className="w-4 h-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            O template será combinado com cada prompt gerado
+          </p>
         </div>
 
         {isBatchMode ? (
