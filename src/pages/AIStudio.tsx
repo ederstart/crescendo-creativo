@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Star } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Star, Layers } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -12,6 +12,7 @@ import { PromptTemplateManager } from '@/components/ai/PromptTemplateManager';
 import { ScriptGenerator } from '@/components/ai/ScriptGenerator';
 import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
+import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
 import { toast } from 'sonner';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -150,10 +151,14 @@ export default function AIStudio() {
       </div>
 
       <Tabs defaultValue="script" className="space-y-6">
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <TabsList className="grid w-full max-w-2xl grid-cols-4">
           <TabsTrigger value="script" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Roteiro
+          </TabsTrigger>
+          <TabsTrigger value="wizard" className="flex items-center gap-2">
+            <Layers className="w-4 h-4" />
+            Multi-Etapas
           </TabsTrigger>
           <TabsTrigger value="scene" className="flex items-center gap-2">
             <Wand2 className="w-4 h-4" />
@@ -186,7 +191,7 @@ export default function AIStudio() {
                 groqApiKey={settings?.groq_api_key}
                 geminiApiKey={settings?.gemini_api_key}
                 openrouterApiKey={settings?.openrouter_api_key}
-                defaultPrompt={selectedScriptPrompt || defaultScriptTemplate?.content || ''}
+                templateContent={selectedScriptPrompt || defaultScriptTemplate?.content || ''}
                 preferredModel={settings?.preferred_model_script || 'groq'}
                 onGenerated={handleScriptGenerated}
                 onFavoriteModel={(model) => handleFavoriteModel('script', model)}
@@ -237,6 +242,28 @@ export default function AIStudio() {
               />
             </div>
           )}
+        </TabsContent>
+
+        {/* Multi-Step Wizard Tab */}
+        <TabsContent value="wizard" className="space-y-6">
+          <div className="glass rounded-xl p-6 max-w-3xl mx-auto">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Roteiro em Etapas</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Construa seu roteiro passo a passo: título, sinopse, estrutura e expansão.
+            </p>
+            <MultiStepScriptWizard
+              groqApiKey={settings?.groq_api_key}
+              geminiApiKey={settings?.gemini_api_key}
+              openrouterApiKey={settings?.openrouter_api_key}
+              preferredModel={settings?.preferred_model_script || 'groq'}
+              onComplete={(script, title) => {
+                setGeneratedScript(script);
+                setScriptTitle(title);
+                toast.success('Roteiro criado! Vá para a aba "Roteiro" para salvar.');
+              }}
+              onFavoriteModel={(model) => handleFavoriteModel('script', model)}
+            />
+          </div>
         </TabsContent>
 
         {/* Scene Tab */}
