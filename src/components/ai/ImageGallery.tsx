@@ -21,10 +21,12 @@ interface GeneratedImage {
 interface ImageGalleryProps {
   whiskToken?: string;
   whiskSessionId?: string;
+  styleTemplate?: string;
   images: GeneratedImage[];
   onImageGenerated: (image: Omit<GeneratedImage, 'id' | 'created_at'>) => void;
   onDeleteImage: (id: string) => void;
   onDeleteMultiple: (ids: string[]) => void;
+  onSaveStyleTemplate: (template: string) => void;
 }
 
 // Helper function to clean "Cena X:" prefix from prompts
@@ -36,31 +38,34 @@ const cleanScenePrefix = (prompt: string): string => {
 export function ImageGallery({
   whiskToken,
   whiskSessionId,
+  styleTemplate: initialStyleTemplate,
   images,
   onImageGenerated,
   onDeleteImage,
   onDeleteMultiple,
+  onSaveStyleTemplate,
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
-  const [styleTemplate, setStyleTemplate] = useState('');
+  const [styleTemplate, setStyleTemplate] = useState(initialStyleTemplate || '');
   const [loading, setLoading] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [batchPrompts, setBatchPrompts] = useState('');
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<string>('all');
+  const [savingStyle, setSavingStyle] = useState(false);
 
-  // Load saved style template from localStorage
+  // Sync with prop when it changes
   useEffect(() => {
-    const savedStyle = localStorage.getItem('whisk-style-template');
-    if (savedStyle) {
-      setStyleTemplate(savedStyle);
+    if (initialStyleTemplate !== undefined) {
+      setStyleTemplate(initialStyleTemplate);
     }
-  }, []);
+  }, [initialStyleTemplate]);
 
-  const saveStyleTemplate = () => {
-    localStorage.setItem('whisk-style-template', styleTemplate);
-    toast.success('Template de estilo salvo!');
+  const saveStyleTemplate = async () => {
+    setSavingStyle(true);
+    await onSaveStyleTemplate(styleTemplate);
+    setSavingStyle(false);
   };
 
   // Group images by date for album-like experience
@@ -271,9 +276,10 @@ export function ImageGallery({
               variant="secondary"
               size="icon"
               onClick={saveStyleTemplate}
+              disabled={savingStyle}
               title="Salvar template de estilo"
             >
-              <Save className="w-4 h-4" />
+              {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-1">

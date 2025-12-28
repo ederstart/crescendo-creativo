@@ -13,6 +13,7 @@ interface AISettings {
   preferred_model_script?: string;
   preferred_model_scene?: string;
   preferred_model_image?: string;
+  style_template?: string;
 }
 
 export function useAISettings() {

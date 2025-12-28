@@ -54,6 +54,7 @@ export type Database = {
           preferred_model_image: string | null
           preferred_model_scene: string | null
           preferred_model_script: string | null
+          style_template: string | null
           updated_at: string
           user_id: string
           whisk_session_id: string | null
@@ -68,6 +69,7 @@ export type Database = {
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
+          style_template?: string | null
           updated_at?: string
           user_id: string
           whisk_session_id?: string | null
@@ -82,6 +84,7 @@ export type Database = {
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
+          style_template?: string | null
           updated_at?: string
           user_id?: string
           whisk_session_id?: string | null
