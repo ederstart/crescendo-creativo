@@ -174,30 +174,51 @@ Response format (VALID JSON ONLY):
       generatedText = data.candidates[0].content.parts[0].text;
 
     } else if (model === 'qwen') {
-      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'qwen/qwen3-coder:free',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
-          ],
-          max_tokens: 8192,
-        }),
-      });
+      // Retry logic for rate limiting
+      const MAX_RETRIES = 3;
+      const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s
+      let lastError = '';
+      
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'qwen/qwen3-coder:free',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
+            ],
+            max_tokens: 8192,
+          }),
+        });
 
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('OpenRouter API error:', error);
-        throw new Error(`OpenRouter API error: ${response.status}`);
+        if (response.ok) {
+          const data = await response.json();
+          generatedText = data.choices[0].message.content;
+          break;
+        }
+        
+        lastError = await response.text();
+        
+        // If rate limited and not last attempt, wait and retry
+        if (response.status === 429 && attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt];
+          console.log(`Rate limited (429), waiting ${delay/1000}s before retry ${attempt + 1}/${MAX_RETRIES}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        console.error('OpenRouter API error:', lastError);
+        throw new Error(`OpenRouter API error: ${response.status}${response.status === 429 ? ' - Rate limit exceeded after retries' : ''}`);
       }
-
-      const data = await response.json();
-      generatedText = data.choices[0].message.content;
+      
+      if (!generatedText) {
+        throw new Error('Failed to get response from OpenRouter after retries');
+      }
     } else {
       throw new Error('Invalid model specified');
     }
