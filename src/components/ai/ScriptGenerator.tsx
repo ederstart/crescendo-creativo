@@ -11,7 +11,7 @@ interface ScriptGeneratorProps {
   groqApiKey?: string;
   geminiApiKey?: string;
   openrouterApiKey?: string;
-  defaultPrompt?: string;
+  templateContent?: string;
   preferredModel?: string;
   onGenerated: (content: string, model: string) => void;
   onFavoriteModel?: (model: string) => void;
@@ -21,13 +21,26 @@ export function ScriptGenerator({
   groqApiKey, 
   geminiApiKey,
   openrouterApiKey,
-  defaultPrompt = '',
+  templateContent = '',
   preferredModel = 'groq',
   onGenerated,
   onFavoriteModel,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
+
+  // When template content is set, prepend it to the prompt
+  useEffect(() => {
+    if (templateContent) {
+      setPrompt(prev => {
+        // Only add template if not already included
+        if (!prev.includes(templateContent)) {
+          return templateContent + (prev ? '\n\n' + prev : '');
+        }
+        return prev;
+      });
+    }
+  }, [templateContent]);
   const [loading, setLoading] = useState(false);
   const [attachedContent, setAttachedContent] = useState('');
   const [attachedFileName, setAttachedFileName] = useState('');
@@ -81,7 +94,6 @@ export function ScriptGenerator({
           prompt,
           model,
           apiKey,
-          systemPrompt: defaultPrompt,
           attachedContent: attachedContent || undefined,
         },
       });

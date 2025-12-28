@@ -321,7 +321,7 @@ export type Database = {
           content: string | null
           created_at: string | null
           id: string
-          project_id: string
+          project_id: string | null
           status: string | null
           title: string
           updated_at: string | null
@@ -331,7 +331,7 @@ export type Database = {
           content?: string | null
           created_at?: string | null
           id?: string
-          project_id: string
+          project_id?: string | null
           status?: string | null
           title: string
           updated_at?: string | null
@@ -341,7 +341,7 @@ export type Database = {
           content?: string | null
           created_at?: string | null
           id?: string
-          project_id?: string
+          project_id?: string | null
           status?: string | null
           title?: string
           updated_at?: string | null
