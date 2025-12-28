@@ -250,9 +250,10 @@ export function ScenePromptGenerator({
           // Update UI progressively
           setGeneratedPrompts([...allScenes]);
           
-          // Small delay between batches to avoid rate limiting
+          // Longer delay between batches to avoid rate limiting
           if (i < scriptParts.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            toast.info(`Aguardando 5 segundos antes do próximo lote para evitar rate limiting...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
         }
         
