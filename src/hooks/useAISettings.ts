@@ -10,6 +10,9 @@ interface AISettings {
   openrouter_api_key?: string;
   whisk_token?: string;
   whisk_session_id?: string;
+  preferred_model_script?: string;
+  preferred_model_scene?: string;
+  preferred_model_image?: string;
 }
 
 export function useAISettings() {

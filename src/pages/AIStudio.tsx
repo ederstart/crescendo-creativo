@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { FileText, Wand2, Image, Settings, Copy, Save } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { FileText, Wand2, Image, Settings, Copy, Save, Star } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -12,16 +14,42 @@ import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { toast } from 'sonner';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+
+const SCRIPT_STORAGE_KEY = 'ai_studio_generated_script';
+const SCRIPT_TITLE_STORAGE_KEY = 'ai_studio_script_title';
 
 export default function AIStudio() {
   const navigate = useNavigate();
-  const { settings } = useAISettings();
+  const { user } = useAuth();
+  const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
   const { images, saveImage, deleteImage, deleteMultiple } = useGeneratedImages();
   
-  const [generatedScript, setGeneratedScript] = useState('');
+  // Load from localStorage on mount
+  const [generatedScript, setGeneratedScript] = useState(() => {
+    return localStorage.getItem(SCRIPT_STORAGE_KEY) || '';
+  });
+  const [scriptTitle, setScriptTitle] = useState(() => {
+    return localStorage.getItem(SCRIPT_TITLE_STORAGE_KEY) || '';
+  });
   const [selectedScriptPrompt, setSelectedScriptPrompt] = useState('');
   const [selectedScenePrompt, setSelectedScenePrompt] = useState('');
+  const [savingScript, setSavingScript] = useState(false);
+
+  // Persist script and title to localStorage
+  useEffect(() => {
+    if (generatedScript) {
+      localStorage.setItem(SCRIPT_STORAGE_KEY, generatedScript);
+    }
+  }, [generatedScript]);
+
+  useEffect(() => {
+    if (scriptTitle) {
+      localStorage.setItem(SCRIPT_TITLE_STORAGE_KEY, scriptTitle);
+    }
+  }, [scriptTitle]);
 
   const handleScriptGenerated = (content: string, model: string) => {
     setGeneratedScript(content);
@@ -32,11 +60,75 @@ export default function AIStudio() {
     toast.success('Roteiro copiado!');
   };
 
-  const saveScript = () => {
-    // Navigate to scripts page with script content
-    sessionStorage.setItem('newScriptContent', generatedScript);
-    navigate('/scripts/new');
-    toast.success('Redirecionando para salvar o roteiro...');
+  const handleTemplateSelect = (template: { content: string }) => {
+    setSelectedScriptPrompt(template.content);
+    // Focus on prompt input
+    toast.success('Template carregado! Complete seu pedido abaixo.');
+  };
+
+  const handleSceneTemplateSelect = (template: { content: string }) => {
+    setSelectedScenePrompt(template.content);
+  };
+
+  const saveScriptToDatabase = async () => {
+    if (!user) {
+      toast.error('Você precisa estar logado');
+      return;
+    }
+
+    if (!scriptTitle.trim()) {
+      toast.error('Digite um título para o roteiro');
+      return;
+    }
+
+    if (!generatedScript.trim()) {
+      toast.error('Gere um roteiro primeiro');
+      return;
+    }
+
+    setSavingScript(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('scripts')
+        .insert({
+          user_id: user.id,
+          title: scriptTitle,
+          content: generatedScript,
+          status: 'draft',
+          project_id: null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Clear localStorage after successful save
+      localStorage.removeItem(SCRIPT_STORAGE_KEY);
+      localStorage.removeItem(SCRIPT_TITLE_STORAGE_KEY);
+      
+      toast.success('Roteiro salvo com sucesso!');
+      navigate(`/scripts/${data.id}`);
+    } catch (error: any) {
+      toast.error('Erro ao salvar: ' + error.message);
+    } finally {
+      setSavingScript(false);
+    }
+  };
+
+  const handleFavoriteModel = async (section: 'script' | 'scene', model: string) => {
+    const updates: any = {};
+    if (section === 'script') {
+      updates.preferred_model_script = model;
+    } else {
+      updates.preferred_model_scene = model;
+    }
+    
+    await saveSettings({
+      ...settings,
+      ...updates,
+    });
+    toast.success('Modelo favorito salvo!');
   };
 
   const defaultScriptTemplate = templates.find(t => t.type === 'script' && t.is_default);
@@ -80,7 +172,7 @@ export default function AIStudio() {
               <PromptTemplateManager
                 templates={templates}
                 type="script"
-                onSelect={(t) => setSelectedScriptPrompt(t.content)}
+                onSelect={handleTemplateSelect}
                 onCreate={createTemplate}
                 onUpdate={updateTemplate}
                 onDelete={deleteTemplate}
@@ -95,26 +187,48 @@ export default function AIStudio() {
                 geminiApiKey={settings?.gemini_api_key}
                 openrouterApiKey={settings?.openrouter_api_key}
                 defaultPrompt={selectedScriptPrompt || defaultScriptTemplate?.content || ''}
+                preferredModel={settings?.preferred_model_script || 'groq'}
                 onGenerated={handleScriptGenerated}
+                onFavoriteModel={(model) => handleFavoriteModel('script', model)}
               />
             </div>
           </div>
 
           {generatedScript && (
             <div className="glass rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-foreground">Roteiro Gerado</h3>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={copyScript}>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copiar
-                  </Button>
-                  <Button variant="fire" size="sm" onClick={saveScript}>
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-foreground">Roteiro Gerado</h3>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={copyScript}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copiar
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="flex items-end gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="script-title">Título do Roteiro</Label>
+                    <Input
+                      id="script-title"
+                      value={scriptTitle}
+                      onChange={(e) => setScriptTitle(e.target.value)}
+                      placeholder="Digite o título do seu roteiro..."
+                      className="mt-1"
+                    />
+                  </div>
+                  <Button 
+                    variant="fire" 
+                    onClick={saveScriptToDatabase}
+                    disabled={savingScript || !scriptTitle.trim()}
+                  >
                     <Save className="w-4 h-4 mr-2" />
-                    Salvar Roteiro
+                    {savingScript ? 'Salvando...' : 'Salvar Roteiro'}
                   </Button>
                 </div>
               </div>
+              
               <Textarea
                 value={generatedScript}
                 onChange={(e) => setGeneratedScript(e.target.value)}
@@ -132,7 +246,7 @@ export default function AIStudio() {
               <PromptTemplateManager
                 templates={templates}
                 type="scene"
-                onSelect={(t) => setSelectedScenePrompt(t.content)}
+                onSelect={handleSceneTemplateSelect}
                 onCreate={createTemplate}
                 onUpdate={updateTemplate}
                 onDelete={deleteTemplate}
@@ -148,7 +262,9 @@ export default function AIStudio() {
                 openrouterApiKey={settings?.openrouter_api_key}
                 scriptContent={generatedScript}
                 defaultStylePrompt={selectedScenePrompt || defaultSceneTemplate?.content || ''}
+                preferredModel={settings?.preferred_model_scene || 'groq'}
                 onPromptsGenerated={() => {}}
+                onFavoriteModel={(model) => handleFavoriteModel('scene', model)}
               />
             </div>
           </div>

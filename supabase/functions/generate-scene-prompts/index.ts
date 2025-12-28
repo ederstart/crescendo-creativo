@@ -12,14 +12,20 @@ serve(async (req) => {
   }
 
   try {
-    const { scriptContent, numberOfScenes, model, apiKey, stylePrompt } = await req.json();
+    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, apiKey, stylePrompt } = await req.json();
     
     if (!scriptContent || !apiKey) {
       throw new Error('Script content and API key are required');
     }
 
+    // Determine scene count based on split mode
+    let sceneCount = numberOfScenes || 5;
+    if (splitMode === 'characters' && charactersPerScene) {
+      sceneCount = Math.ceil(scriptContent.length / charactersPerScene);
+    }
+
     const systemPrompt = `Você é um especialista em criar prompts para geração de imagens. 
-Sua tarefa é analisar um roteiro de vídeo e criar ${numberOfScenes || 5} prompts detalhados para geração de cenas/ilustrações.
+Sua tarefa é analisar um roteiro de vídeo e criar ${sceneCount} prompts detalhados para geração de cenas/ilustrações.
 
 Regras:
 1. Cada prompt deve ser visual e descritivo
@@ -27,6 +33,7 @@ Regras:
 3. Mantenha consistência visual entre as cenas
 4. Os prompts devem estar em inglês para melhor compatibilidade
 5. Retorne APENAS um JSON com array de prompts, sem explicações
+6. Divida o roteiro em exatamente ${sceneCount} partes proporcionais
 
 ${stylePrompt ? `Estilo base para todas as cenas: ${stylePrompt}` : ''}
 

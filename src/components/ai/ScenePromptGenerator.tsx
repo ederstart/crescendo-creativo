@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Wand2, Copy, Check } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Loader2, Wand2, Copy, Check, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -20,7 +21,9 @@ interface ScenePromptGeneratorProps {
   openrouterApiKey?: string;
   scriptContent: string;
   defaultStylePrompt?: string;
+  preferredModel?: string;
   onPromptsGenerated: (prompts: ScenePrompt[]) => void;
+  onFavoriteModel?: (model: string) => void;
 }
 
 export function ScenePromptGenerator({
@@ -29,14 +32,25 @@ export function ScenePromptGenerator({
   openrouterApiKey,
   scriptContent,
   defaultStylePrompt = '',
+  preferredModel = 'groq',
   onPromptsGenerated,
+  onFavoriteModel,
 }: ScenePromptGeneratorProps) {
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>('groq');
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
+  const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('scenes');
   const [numberOfScenes, setNumberOfScenes] = useState(5);
+  const [charactersPerScene, setCharactersPerScene] = useState(500);
   const [stylePrompt, setStylePrompt] = useState(defaultStylePrompt);
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  // Update model when preferredModel changes
+  useEffect(() => {
+    if (preferredModel && ['groq', 'gemini', 'qwen'].includes(preferredModel)) {
+      setModel(preferredModel as 'groq' | 'gemini' | 'qwen');
+    }
+  }, [preferredModel]);
 
   const handleGenerate = async () => {
     if (!scriptContent.trim()) {
@@ -57,7 +71,9 @@ export function ScenePromptGenerator({
       const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
         body: {
           scriptContent,
-          numberOfScenes,
+          splitMode,
+          numberOfScenes: splitMode === 'scenes' ? numberOfScenes : undefined,
+          charactersPerScene: splitMode === 'characters' ? charactersPerScene : undefined,
           model,
           apiKey,
           stylePrompt: stylePrompt || undefined,
@@ -98,23 +114,71 @@ export function ScenePromptGenerator({
   };
 
   const hasApiKey = !!getApiKey(model);
+  const isFavorite = model === preferredModel;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
+      <div>
+        <div className="flex items-center justify-between mb-1">
           <Label>Modelo de IA</Label>
-          <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
-            <SelectTrigger className="mt-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
-              <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-              <SelectItem value="qwen">Qwen3 (OpenRouter)</SelectItem>
-            </SelectContent>
-          </Select>
+          {onFavoriteModel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onFavoriteModel(model)}
+              className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
+            >
+              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+              {isFavorite ? 'Favorito' : 'Favoritar'}
+            </Button>
+          )}
         </div>
+        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="groq">
+              <div className="flex items-center gap-2">
+                <span>Groq (Llama 3.3)</span>
+                {preferredModel === 'groq' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="gemini">
+              <div className="flex items-center gap-2">
+                <span>Gemini 2.5 Flash</span>
+                {preferredModel === 'gemini' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="qwen">
+              <div className="flex items-center gap-2">
+                <span>Qwen3 (OpenRouter)</span>
+                {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-3">
+        <Label>Modo de Divisão</Label>
+        <RadioGroup
+          value={splitMode}
+          onValueChange={(v) => setSplitMode(v as 'scenes' | 'characters')}
+          className="flex gap-4"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="scenes" id="scenes" />
+            <Label htmlFor="scenes" className="font-normal cursor-pointer">Por número de cenas</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="characters" id="characters" />
+            <Label htmlFor="characters" className="font-normal cursor-pointer">Por caracteres</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      {splitMode === 'scenes' ? (
         <div>
           <Label>Número de Cenas</Label>
           <Input
@@ -126,7 +190,23 @@ export function ScenePromptGenerator({
             className="mt-1"
           />
         </div>
-      </div>
+      ) : (
+        <div>
+          <Label>Caracteres por Cena</Label>
+          <Input
+            type="number"
+            min={100}
+            max={2000}
+            step={100}
+            value={charactersPerScene}
+            onChange={(e) => setCharactersPerScene(parseInt(e.target.value) || 500)}
+            className="mt-1"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            O roteiro será dividido a cada ~{charactersPerScene} caracteres
+          </p>
+        </div>
+      )}
 
       <div>
         <Label>Estilo Visual Base (opcional)</Label>
