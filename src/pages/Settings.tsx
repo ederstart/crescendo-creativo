@@ -4,23 +4,23 @@ import { useAISettings } from '@/hooks/useAISettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { User, Lock, Bot, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { User, Lock, Bot, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
 
 export default function Settings() {
   const { user, signOut } = useAuth();
-  const { settings, saveSettings, validateWhiskToken } = useAISettings();
+  const { settings, saveSettings } = useAISettings();
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
-  const [validatingWhisk, setValidatingWhisk] = useState(false);
-  const [whiskValidationResult, setWhiskValidationResult] = useState<'success' | 'error' | null>(null);
+  const [validatingCookie, setValidatingCookie] = useState(false);
+  const [cookieValidationResult, setCookieValidationResult] = useState<'success' | 'error' | null>(null);
   const [groqKey, setGroqKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
-  const [whiskToken, setWhiskToken] = useState('');
-  const [whiskSessionId, setWhiskSessionId] = useState('');
+  const [googleCookie, setGoogleCookie] = useState('');
 
   const handlePasswordChange = async () => {
     if (!newPassword || newPassword.length < 6) {
@@ -47,51 +47,48 @@ export default function Settings() {
       groq_api_key: groqKey || settings?.groq_api_key,
       gemini_api_key: geminiKey || settings?.gemini_api_key,
       openrouter_api_key: openrouterKey || settings?.openrouter_api_key,
-      whisk_token: whiskToken || settings?.whisk_token,
-      whisk_session_id: whiskSessionId || settings?.whisk_session_id,
+      google_cookie: googleCookie || settings?.google_cookie,
     });
   };
 
-  const handleWhiskValidation = async () => {
-    const token = whiskToken || settings?.whisk_token;
-    const sessionId = whiskSessionId || settings?.whisk_session_id;
+  const handleCookieValidation = async () => {
+    const cookie = googleCookie || settings?.google_cookie;
 
-    if (!token || !sessionId) {
-      toast.error('Configure o Token e Session ID do Whisk primeiro');
+    if (!cookie) {
+      toast.error('Configure o Cookie do Google primeiro');
       return;
     }
 
-    setValidatingWhisk(true);
-    setWhiskValidationResult(null);
+    setValidatingCookie(true);
+    setCookieValidationResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-whisk-image', {
+      const { data, error } = await supabase.functions.invoke('generate-whisk-v2', {
         body: {
           prompt: 'A simple red circle on white background, minimal, clean',
-          token,
-          sessionId,
-          aspectRatio: '1:1',
+          cookie,
+          aspectRatio: 'square',
         },
       });
 
       if (error) throw error;
       
       if (data.error) {
-        setWhiskValidationResult('error');
+        setCookieValidationResult('error');
         toast.error('Validação falhou: ' + data.error);
         if (data.suggestion) {
           toast.info(data.suggestion);
         }
-      } else if (data.imageUrl) {
-        setWhiskValidationResult('success');
-        toast.success('Validação do Whisk realizada com sucesso!');
+      } else if (data.imageBase64) {
+        setCookieValidationResult('success');
+        toast.success('Cookie validado com sucesso! IMAGEN_3_5 funcionando!');
       }
     } catch (error) {
-      console.error('Whisk validation error:', error);
-      setWhiskValidationResult('error');
-      toast.error('Erro ao validar Whisk. Verifique o Token e Session ID.');
+      console.error('Cookie validation error:', error);
+      setCookieValidationResult('error');
+      toast.error('Erro ao validar cookie. Verifique se está correto e não expirou.');
     } finally {
-      setValidatingWhisk(false);
+      setValidatingCookie(false);
     }
   };
 
@@ -207,56 +204,62 @@ export default function Settings() {
           </div>
           
           <div className="border-t border-border pt-4 mt-4">
-            <h3 className="text-sm font-medium text-foreground mb-3">Google Labs Whisk</h3>
+            <h3 className="text-sm font-medium text-foreground mb-3">Google Labs (Whisk/IMAGEN)</h3>
             <div className="space-y-3">
               <div>
-                <Label>Whisk Token</Label>
-                <Input
-                  type={showKeys ? 'text' : 'password'}
-                  defaultValue={settings?.whisk_token || ''}
-                  onChange={(e) => setWhiskToken(e.target.value)}
-                  placeholder="Token do Google Labs Whisk"
-                  className="bg-muted border-border mt-1 font-mono text-sm"
+                <Label>Google Cookie</Label>
+                <Textarea
+                  defaultValue={settings?.google_cookie || ''}
+                  onChange={(e) => setGoogleCookie(e.target.value)}
+                  placeholder="Cole aqui o cookie exportado do Google Labs..."
+                  className="bg-muted border-border mt-1 font-mono text-xs h-24"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cole o cookie exportado como "Header String" da extensão Cookie Editor
+                </p>
               </div>
-              <div>
-                <Label>Whisk Session ID</Label>
-                <Input
-                  type={showKeys ? 'text' : 'password'}
-                  defaultValue={settings?.whisk_session_id || ''}
-                  onChange={(e) => setWhiskSessionId(e.target.value)}
-                  placeholder="__Secure-1PSID do cookie"
-                  className="bg-muted border-border mt-1 font-mono text-sm"
-                />
+              
+              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
+                <p className="font-medium text-foreground">Como obter o cookie:</p>
+                <ol className="list-decimal list-inside text-muted-foreground space-y-1 text-xs">
+                  <li>Instale a extensão <a href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Cookie Editor <ExternalLink className="w-3 h-3" /></a></li>
+                  <li>Acesse <a href="https://labs.google" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">labs.google <ExternalLink className="w-3 h-3" /></a> e faça login com sua conta Google</li>
+                  <li>Clique no ícone do Cookie Editor</li>
+                  <li>Clique em "Export" → "Header String"</li>
+                  <li>Cole o conteúdo no campo acima</li>
+                </ol>
+                <p className="text-xs text-amber-500/80 mt-2">
+                  ⚠️ O cookie expira periodicamente (~24h). Renove quando parar de funcionar.
+                </p>
               </div>
               
               <Button 
                 variant="outline"
-                onClick={handleWhiskValidation}
-                disabled={validatingWhisk}
+                onClick={handleCookieValidation}
+                disabled={validatingCookie}
                 className="w-full"
               >
-                {validatingWhisk ? (
+                {validatingCookie ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Validando Whisk...
+                    Validando Cookie...
                   </>
-                ) : whiskValidationResult === 'success' ? (
+                ) : cookieValidationResult === 'success' ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
-                    Whisk Validado com Sucesso
+                    Cookie Validado com Sucesso
                   </>
-                ) : whiskValidationResult === 'error' ? (
+                ) : cookieValidationResult === 'error' ? (
                   <>
                     <XCircle className="w-4 h-4 mr-2 text-destructive" />
                     Falhou - Clique para tentar novamente
                   </>
                 ) : (
-                  'Validar Whisk'
+                  'Validar Cookie'
                 )}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Gera uma imagem de teste para validar se as credenciais estão funcionando
+                Gera uma imagem de teste usando IMAGEN_3_5 para validar se o cookie está funcionando
               </p>
             </div>
           </div>

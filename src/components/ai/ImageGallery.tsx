@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -19,8 +20,7 @@ interface GeneratedImage {
 }
 
 interface ImageGalleryProps {
-  whiskToken?: string;
-  whiskSessionId?: string;
+  googleCookie?: string;
   styleTemplate?: string;
   images: GeneratedImage[];
   onImageGenerated: (image: Omit<GeneratedImage, 'id' | 'created_at'>) => void;
@@ -31,13 +31,11 @@ interface ImageGalleryProps {
 
 // Helper function to clean "Cena X:" prefix from prompts
 const cleanScenePrefix = (prompt: string): string => {
-  // Remove "Cena X:" or "CENA X:" prefix where X is 1-999
   return prompt.replace(/^(?:CENA|Cena|cena)\s*\d{1,3}\s*:\s*/i, '').trim();
 };
 
 export function ImageGallery({
-  whiskToken,
-  whiskSessionId,
+  googleCookie,
   styleTemplate: initialStyleTemplate,
   images,
   onImageGenerated,
@@ -48,6 +46,7 @@ export function ImageGallery({
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
   const [styleTemplate, setStyleTemplate] = useState(initialStyleTemplate || '');
+  const [aspectRatio, setAspectRatio] = useState('landscape');
   const [loading, setLoading] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [batchPrompts, setBatchPrompts] = useState('');
@@ -80,8 +79,8 @@ export function ImageGallery({
   const displayImages = activeAlbum === 'all' ? images : groupedImages[activeAlbum] || [];
 
   const handleGenerate = async (promptText: string) => {
-    if (!whiskToken || !whiskSessionId) {
-      toast.error('Configure o Token e Session ID do Whisk nas configurações');
+    if (!googleCookie) {
+      toast.error('Configure o Cookie do Google nas configurações');
       return;
     }
 
@@ -95,23 +94,18 @@ export function ImageGallery({
     try {
       // Clean the "Cena X:" prefix from the prompt
       const cleanedPrompt = cleanScenePrefix(promptText);
-      
-      // Combine style template with prompt if style exists
-      const finalPrompt = styleTemplate.trim() 
-        ? `${styleTemplate.trim()}, ${cleanedPrompt}` 
-        : cleanedPrompt;
 
-      const { data, error } = await supabase.functions.invoke('generate-whisk-image', {
+      const { data, error } = await supabase.functions.invoke('generate-whisk-v2', {
         body: {
-          prompt: finalPrompt,
-          token: whiskToken,
-          sessionId: whiskSessionId,
-          subjectImageUrl: subjectImageUrl || undefined,
-          aspectRatio: '16:9',
+          prompt: cleanedPrompt,
+          cookie: googleCookie,
+          styleTemplate: styleTemplate.trim() || undefined,
+          aspectRatio,
         },
       });
 
       if (error) throw error;
+      
       if (data.error) {
         toast.error(data.error);
         if (data.suggestion) {
@@ -120,14 +114,19 @@ export function ImageGallery({
         return;
       }
 
+      // Convert base64 to data URL for display
+      const imageUrl = data.imageBase64.startsWith('data:') 
+        ? data.imageBase64 
+        : `data:image/png;base64,${data.imageBase64}`;
+
       await onImageGenerated({
-        image_url: data.imageUrl,
-        prompt_used: finalPrompt,
+        image_url: imageUrl,
+        prompt_used: data.prompt,
         scene_description: cleanedPrompt.substring(0, 100),
         subject_image_url: subjectImageUrl || undefined,
       });
 
-      toast.success('Imagem gerada!');
+      toast.success('Imagem gerada com IMAGEN_3_5!');
       setPrompt('');
     } catch (error) {
       console.error('Error generating image:', error);
@@ -144,14 +143,13 @@ export function ImageGallery({
       return;
     }
 
-    // Count how many prompts there are (based on "Cena X:" pattern or just lines)
     const sceneCount = prompts.filter(p => /^(?:CENA|Cena|cena)\s*\d{1,3}\s*:/i.test(p)).length || prompts.length;
     toast.info(`Detectados ${sceneCount} prompts para gerar...`);
     
     for (let i = 0; i < prompts.length; i++) {
       toast.info(`Gerando imagem ${i + 1} de ${prompts.length}...`);
       await handleGenerate(prompts[i]);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait between requests
     }
 
     toast.success('Todas as imagens foram geradas!');
@@ -171,6 +169,15 @@ export function ImageGallery({
 
   const downloadImage = async (url: string, filename: string) => {
     try {
+      // Handle base64 images
+      if (url.startsWith('data:')) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        return;
+      }
+      
       const response = await fetch(url);
       const blob = await response.blob();
       const link = document.createElement('a');
@@ -187,7 +194,7 @@ export function ImageGallery({
     toast.info(`Baixando ${selectedImgs.length} imagens...`);
     
     for (let i = 0; i < selectedImgs.length; i++) {
-      await downloadImage(selectedImgs[i].image_url, `whisk-${i + 1}.png`);
+      await downloadImage(selectedImgs[i].image_url, `imagen-${i + 1}.png`);
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
@@ -198,14 +205,14 @@ export function ImageGallery({
     toast.info(`Baixando ${displayImages.length} imagens...`);
     
     for (let i = 0; i < displayImages.length; i++) {
-      await downloadImage(displayImages[i].image_url, `whisk-${i + 1}.png`);
+      await downloadImage(displayImages[i].image_url, `imagen-${i + 1}.png`);
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     
     toast.success('Download concluído!');
   };
 
-  const hasCredentials = whiskToken && whiskSessionId;
+  const hasCredentials = !!googleCookie;
 
   return (
     <div className="space-y-6">
@@ -252,14 +259,29 @@ export function ImageGallery({
           </Button>
         </div>
 
-        <div>
-          <Label>Imagem de Referência (Personagem/Assunto)</Label>
-          <Input
-            value={subjectImageUrl}
-            onChange={(e) => setSubjectImageUrl(e.target.value)}
-            placeholder="URL da imagem do personagem para consistência..."
-            className="mt-1"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Imagem de Referência (opcional)</Label>
+            <Input
+              value={subjectImageUrl}
+              onChange={(e) => setSubjectImageUrl(e.target.value)}
+              placeholder="URL da imagem do personagem..."
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label>Proporção</Label>
+            <Select value={aspectRatio} onValueChange={setAspectRatio}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="landscape">Paisagem (16:9)</SelectItem>
+                <SelectItem value="portrait">Retrato (9:16)</SelectItem>
+                <SelectItem value="square">Quadrado (1:1)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div>
@@ -268,7 +290,7 @@ export function ImageGallery({
             <Textarea
               value={styleTemplate}
               onChange={(e) => setStyleTemplate(e.target.value)}
-              placeholder="Ex: cartoon style, white background, 16:9 aspect ratio, high quality, detailed illustration..."
+              placeholder="Ex: cartoon style, white background, high quality, detailed illustration..."
               rows={2}
               className="flex-1"
             />
@@ -311,7 +333,7 @@ export function ImageGallery({
               ) : (
                 <>
                   <ImageIcon className="w-4 h-4 mr-2" />
-                  Gerar Todas
+                  Gerar Todas (IMAGEN_3_5)
                 </>
               )}
             </Button>
@@ -340,7 +362,7 @@ export function ImageGallery({
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  Gerar Imagem
+                  Gerar Imagem (IMAGEN_3_5)
                 </>
               )}
             </Button>
@@ -349,7 +371,7 @@ export function ImageGallery({
 
         {!hasCredentials && (
           <p className="text-sm text-destructive text-center">
-            Configure o Token e Session ID do Whisk nas configurações
+            Configure o Cookie do Google nas configurações para gerar imagens
           </p>
         )}
       </div>
@@ -453,7 +475,7 @@ export function ImageGallery({
                     className="h-8 w-8"
                     onClick={(e) => {
                       e.stopPropagation();
-                      downloadImage(image.image_url, `whisk-${image.id}.png`);
+                      downloadImage(image.image_url, `imagen-${image.id}.png`);
                     }}
                   >
                     <Download className="w-4 h-4" />
@@ -480,7 +502,7 @@ export function ImageGallery({
         <div className="text-center py-12">
           <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-muted-foreground">Nenhuma imagem gerada ainda</p>
-          <p className="text-sm text-muted-foreground mt-1">Use o gerador acima para criar suas primeiras imagens</p>
+          <p className="text-sm text-muted-foreground mt-1">Use o gerador acima para criar suas primeiras imagens com IMAGEN_3_5</p>
         </div>
       )}
     </div>

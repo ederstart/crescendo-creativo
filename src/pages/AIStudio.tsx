@@ -290,10 +290,9 @@ export default function AIStudio() {
 
         <TabsContent value="images">
           <div className="glass rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens (Whisk)</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens (IMAGEN_3_5)</h3>
             <ImageGallery
-              whiskToken={settings?.whisk_token}
-              whiskSessionId={settings?.whisk_session_id}
+              googleCookie={settings?.google_cookie}
               styleTemplate={settings?.style_template}
               images={images}
               onImageGenerated={saveImage}

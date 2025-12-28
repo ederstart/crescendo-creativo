@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           created_at: string
           gemini_api_key: string | null
+          google_cookie: string | null
           groq_api_key: string | null
           id: string
           openrouter_api_key: string | null
@@ -63,6 +64,7 @@ export type Database = {
         Insert: {
           created_at?: string
           gemini_api_key?: string | null
+          google_cookie?: string | null
           groq_api_key?: string | null
           id?: string
           openrouter_api_key?: string | null
@@ -78,6 +80,7 @@ export type Database = {
         Update: {
           created_at?: string
           gemini_api_key?: string | null
+          google_cookie?: string | null
           groq_api_key?: string | null
           id?: string
           openrouter_api_key?: string | null

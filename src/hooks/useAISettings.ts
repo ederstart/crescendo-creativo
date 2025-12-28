@@ -8,12 +8,14 @@ interface AISettings {
   groq_api_key?: string;
   gemini_api_key?: string;
   openrouter_api_key?: string;
-  whisk_token?: string;
-  whisk_session_id?: string;
+  google_cookie?: string;
   preferred_model_script?: string;
   preferred_model_scene?: string;
   preferred_model_image?: string;
   style_template?: string;
+  // Campos legados (mantidos para compatibilidade)
+  whisk_token?: string;
+  whisk_session_id?: string;
 }
 
 export function useAISettings() {
@@ -81,29 +83,5 @@ export function useAISettings() {
     setLoading(false);
   };
 
-  const validateWhiskToken = async (token: string, sessionId: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.functions.invoke('validate-whisk-token', {
-        body: { token, sessionId },
-      });
-
-      if (error) {
-        toast.error('Erro ao validar credenciais');
-        return false;
-      }
-
-      if (data.valid) {
-        toast.success(data.message);
-        return true;
-      } else {
-        toast.error(data.error);
-        return false;
-      }
-    } catch (error) {
-      toast.error('Erro na validação');
-      return false;
-    }
-  };
-
-  return { settings, loading, saveSettings, refetch: fetchSettings, validateWhiskToken };
+  return { settings, loading, saveSettings, refetch: fetchSettings };
 }
