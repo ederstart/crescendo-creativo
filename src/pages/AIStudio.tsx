@@ -276,9 +276,6 @@ export default function AIStudio() {
             <div className="glass rounded-xl p-6">
               <h3 className="text-lg font-semibold text-foreground mb-4">Gerar Prompts de Cenas</h3>
               <ScenePromptGenerator
-                groqApiKey={settings?.groq_api_key}
-                geminiApiKey={settings?.gemini_api_key}
-                openrouterApiKey={settings?.openrouter_api_key}
                 defaultStylePrompt={selectedScenePrompt || defaultSceneTemplate?.content || ''}
                 preferredModel={settings?.preferred_model_scene || 'groq'}
                 onPromptsGenerated={() => {}}

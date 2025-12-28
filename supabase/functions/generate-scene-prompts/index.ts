@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,10 +13,55 @@ serve(async (req) => {
   }
 
   try {
-    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, apiKey, stylePrompt } = await req.json();
+    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, stylePrompt } = await req.json();
     
-    if (!scriptContent || !apiKey) {
-      throw new Error('Script content and API key are required');
+    if (!scriptContent) {
+      throw new Error('Script content is required');
+    }
+
+    // Get user from authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Authorization header is required');
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Fetch API keys from ai_settings table
+    const { data: settings, error: settingsError } = await supabase
+      .from('ai_settings')
+      .select('groq_api_key, gemini_api_key, openrouter_api_key')
+      .eq('user_id', user.id)
+      .single();
+
+    if (settingsError || !settings) {
+      throw new Error('AI settings not found. Please configure your API keys in Settings.');
+    }
+
+    // Get the appropriate API key based on selected model
+    let apiKey: string | null = null;
+    if (model === 'groq') {
+      apiKey = settings.groq_api_key;
+    } else if (model === 'gemini') {
+      apiKey = settings.gemini_api_key;
+    } else if (model === 'qwen') {
+      apiKey = settings.openrouter_api_key;
+    }
+
+    if (!apiKey) {
+      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter';
+      throw new Error(`API key for ${modelName} not configured. Please add it in Settings.`);
     }
 
     // Determine scene count based on split mode
@@ -51,6 +97,8 @@ Formato de resposta (JSON):
     let response;
     let generatedText = '';
 
+    console.log(`Generating scene prompts with model: ${model}`);
+
     if (model === 'groq') {
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -72,7 +120,7 @@ Formato de resposta (JSON):
       if (!response.ok) {
         const error = await response.text();
         console.error('Groq API error:', error);
-        throw new Error(`Groq API error: ${response.status}`);
+        throw new Error(`Groq API error: ${response.status} - ${error}`);
       }
 
       const data = await response.json();
@@ -100,7 +148,7 @@ Formato de resposta (JSON):
       if (!response.ok) {
         const error = await response.text();
         console.error('Gemini API error:', error);
-        throw new Error(`Gemini API error: ${response.status}`);
+        throw new Error(`Gemini API error: ${response.status} - ${error}`);
       }
 
       const data = await response.json();
@@ -125,7 +173,13 @@ Formato de resposta (JSON):
       if (!response.ok) {
         const error = await response.text();
         console.error('OpenRouter API error:', error);
-        throw new Error(`OpenRouter API error: ${response.status}`);
+        
+        // Check for rate limiting
+        if (response.status === 429) {
+          throw new Error('O modelo Qwen está temporariamente indisponível (rate limit). Tente usar Groq ou Gemini.');
+        }
+        
+        throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
       }
 
       const data = await response.json();
@@ -133,6 +187,8 @@ Formato de resposta (JSON):
     } else {
       throw new Error('Invalid model specified');
     }
+
+    console.log('Generated text received, parsing JSON...');
 
     // Parse the JSON response
     let scenes;
@@ -146,9 +202,12 @@ Formato de resposta (JSON):
         const parsed = JSON.parse(jsonMatch[0]);
         scenes = parsed.scenes || parsed;
       } else {
-        throw new Error('Failed to parse scene prompts');
+        console.error('Failed to parse response:', generatedText);
+        throw new Error('Failed to parse scene prompts from AI response');
       }
     }
+
+    console.log(`Successfully generated ${scenes.length} scene prompts`);
 
     return new Response(JSON.stringify({ scenes, model }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
