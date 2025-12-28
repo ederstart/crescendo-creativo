@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Wand2, Copy, Check, FileText } from 'lucide-react';
+import { Loader2, Wand2, Copy, Check, Star, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,15 +23,26 @@ interface Script {
 }
 
 interface ScenePromptGeneratorProps {
+  groqApiKey?: string;
+  geminiApiKey?: string;
+  openrouterApiKey?: string;
   defaultStylePrompt?: string;
+  preferredModel?: string;
   onPromptsGenerated: (prompts: ScenePrompt[]) => void;
+  onFavoriteModel?: (model: string) => void;
 }
 
 export function ScenePromptGenerator({
+  groqApiKey,
+  geminiApiKey,
+  openrouterApiKey,
   defaultStylePrompt = '',
+  preferredModel = 'groq',
   onPromptsGenerated,
+  onFavoriteModel,
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
   const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('scenes');
   const [numberOfScenes, setNumberOfScenes] = useState(5);
   const [charactersPerScene, setCharactersPerScene] = useState(500);
@@ -39,12 +50,18 @@ export function ScenePromptGenerator({
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [generationProgress, setGenerationProgress] = useState<string>('');
   
   // Script selection
   const [scripts, setScripts] = useState<Script[]>([]);
   const [selectedScriptId, setSelectedScriptId] = useState<string>('');
   const [loadingScripts, setLoadingScripts] = useState(true);
+
+  // Update model when preferredModel changes
+  useEffect(() => {
+    if (preferredModel && ['groq', 'gemini', 'qwen'].includes(preferredModel)) {
+      setModel(preferredModel as 'groq' | 'gemini' | 'qwen');
+    }
+  }, [preferredModel]);
 
   // Fetch user scripts
   useEffect(() => {
@@ -81,8 +98,14 @@ export function ScenePromptGenerator({
       return;
     }
 
+    const apiKey = model === 'groq' ? groqApiKey : model === 'gemini' ? geminiApiKey : openrouterApiKey;
+    if (!apiKey) {
+      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
+      toast.error(`Configure a API key do ${modelName} nas configurações`);
+      return;
+    }
+
     setLoading(true);
-    setGenerationProgress('Iniciando geração...');
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
@@ -91,6 +114,8 @@ export function ScenePromptGenerator({
           splitMode,
           numberOfScenes: splitMode === 'scenes' ? numberOfScenes : undefined,
           charactersPerScene: splitMode === 'characters' ? charactersPerScene : undefined,
+          model,
+          apiKey,
           stylePrompt: stylePrompt || undefined,
         },
       });
@@ -100,19 +125,12 @@ export function ScenePromptGenerator({
 
       setGeneratedPrompts(data.scenes);
       onPromptsGenerated(data.scenes);
-      
-      if (data.generated < data.requested) {
-        toast.warning(`Gerados ${data.generated} de ${data.requested} prompts solicitados`);
-      } else {
-        toast.success(`${data.generated} prompts de cenas gerados!`);
-      }
+      toast.success('Prompts de cenas gerados!');
     } catch (error) {
       console.error('Error generating scene prompts:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro ao gerar prompts';
-      toast.error(errorMessage);
+      toast.error('Erro ao gerar prompts de cenas');
     } finally {
       setLoading(false);
-      setGenerationProgress('');
     }
   };
 
@@ -128,6 +146,15 @@ export function ScenePromptGenerator({
     await navigator.clipboard.writeText(allPrompts);
     toast.success('Todos os prompts copiados!');
   };
+
+  const getApiKey = (m: string) => {
+    if (m === 'groq') return groqApiKey;
+    if (m === 'gemini') return geminiApiKey;
+    return openrouterApiKey;
+  };
+
+  const hasApiKey = !!getApiKey(model);
+  const isFavorite = model === preferredModel;
 
   return (
     <div className="space-y-4">
@@ -173,6 +200,48 @@ export function ScenePromptGenerator({
         </div>
       )}
 
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Modelo de IA</Label>
+          {onFavoriteModel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onFavoriteModel(model)}
+              className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
+            >
+              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+              {isFavorite ? 'Favorito' : 'Favoritar'}
+            </Button>
+          )}
+        </div>
+        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="groq">
+              <div className="flex items-center gap-2">
+                <span>Groq (Llama 3.3)</span>
+                {preferredModel === 'groq' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="gemini">
+              <div className="flex items-center gap-2">
+                <span>Gemini 2.5 Flash</span>
+                {preferredModel === 'gemini' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="qwen">
+              <div className="flex items-center gap-2">
+                <span>Qwen3 (OpenRouter)</span>
+                {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="space-y-3">
         <Label>Modo de Divisão</Label>
         <RadioGroup
@@ -197,7 +266,7 @@ export function ScenePromptGenerator({
           <Input
             type="number"
             min={1}
-            max={200}
+            max={50}
             value={numberOfScenes}
             onChange={(e) => setNumberOfScenes(parseInt(e.target.value) || 5)}
             className="mt-1"
@@ -239,14 +308,14 @@ export function ScenePromptGenerator({
 
       <Button
         onClick={handleGenerate}
-        disabled={loading || !scriptContent}
+        disabled={loading || !hasApiKey || !scriptContent}
         className="w-full"
         variant="fire"
       >
         {loading ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {generationProgress || 'Gerando Prompts...'}
+            Gerando Prompts...
           </>
         ) : (
           <>
