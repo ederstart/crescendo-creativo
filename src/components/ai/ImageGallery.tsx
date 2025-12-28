@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import JSZip from 'jszip';
 
 interface GeneratedImage {
   id: string;
@@ -27,6 +28,7 @@ interface ImageGalleryProps {
   onDeleteImage: (id: string) => void;
   onDeleteMultiple: (ids: string[]) => void;
   onSaveStyleTemplate: (template: string) => void;
+  onRefetch?: () => void;
 }
 
 // Helper function to clean "Cena X:" prefix from prompts
@@ -35,7 +37,8 @@ const cleanScenePrefix = (prompt: string): string => {
 };
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 3000;
+// Progressive retry delays: 10s, 20s, 30s
+const RETRY_DELAYS = [10000, 20000, 30000];
 
 export function ImageGallery({
   googleCookie,
@@ -45,6 +48,7 @@ export function ImageGallery({
   onDeleteImage,
   onDeleteMultiple,
   onSaveStyleTemplate,
+  onRefetch,
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
@@ -57,9 +61,12 @@ export function ImageGallery({
   const [activeAlbum, setActiveAlbum] = useState<string>('all');
   const [savingStyle, setSavingStyle] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [downloadingZip, setDownloadingZip] = useState(false);
   
   // Ref to control stopping batch generation
   const stopBatchRef = useRef(false);
+  // Track failed prompts
+  const failedPromptsRef = useRef<string[]>([]);
 
   // Sync with prop when it changes
   useEffect(() => {
@@ -114,10 +121,11 @@ export function ImageGallery({
       if (error) throw error;
       
       if (data.error) {
-        // Check if we should retry
+        // Check if we should retry with progressive delay
         if (retryCount < MAX_RETRIES) {
-          toast.warning(`Erro na geração, tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          const delay = RETRY_DELAYS[retryCount];
+          toast.warning(`Erro na geração, aguardando ${delay / 1000}s e tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
           return handleGenerate(promptText, retryCount + 1);
         }
         
@@ -146,10 +154,11 @@ export function ImageGallery({
     } catch (error) {
       console.error('Error generating image:', error);
       
-      // Retry on network/server errors
+      // Retry on network/server errors with progressive delay
       if (retryCount < MAX_RETRIES) {
-        toast.warning(`Erro na geração, tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        const delay = RETRY_DELAYS[retryCount];
+        toast.warning(`Erro na geração, aguardando ${delay / 1000}s e tentando novamente (${retryCount + 1}/${MAX_RETRIES})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
         return handleGenerate(promptText, retryCount + 1);
       }
       
@@ -167,8 +176,9 @@ export function ImageGallery({
       return;
     }
 
-    // Reset stop flag
+    // Reset stop flag and failed prompts
     stopBatchRef.current = false;
+    failedPromptsRef.current = [];
 
     const sceneCount = prompts.filter(p => /^(?:CENA|Cena|cena)\s*\d{1,3}\s*:/i.test(p)).length || prompts.length;
     toast.info(`Detectados ${sceneCount} prompts para gerar...`);
@@ -187,8 +197,13 @@ export function ImageGallery({
       
       const success = await handleGenerate(prompts[i]);
       
-      // If failed after all retries and user wants to stop on error, break
-      if (!success && stopBatchRef.current) {
+      // Track failed prompts
+      if (!success) {
+        failedPromptsRef.current.push(prompts[i]);
+      }
+      
+      // If user wants to stop, break
+      if (stopBatchRef.current) {
         break;
       }
       
@@ -200,8 +215,30 @@ export function ImageGallery({
 
     setBatchProgress(null);
     
+    // Refresh gallery after batch generation
+    if (onRefetch) {
+      onRefetch();
+    }
+    
+    // Show results
+    const successCount = prompts.length - failedPromptsRef.current.length;
+    const failedCount = failedPromptsRef.current.length;
+    
     if (!stopBatchRef.current) {
-      toast.success('Todas as imagens foram geradas!');
+      if (failedCount === 0) {
+        toast.success(`Todas as ${successCount} imagens foram geradas!`);
+      } else {
+        toast.warning(`${successCount} geradas, ${failedCount} falharam`);
+        // Show failed prompts
+        console.log('Prompts que falharam:', failedPromptsRef.current);
+        toast.error(
+          `Cenas que falharam: ${failedPromptsRef.current.map(p => {
+            const match = p.match(/^(?:CENA|Cena|cena)\s*(\d{1,3})\s*:/i);
+            return match ? `Cena ${match[1]}` : p.substring(0, 30);
+          }).join(', ')}`,
+          { duration: 10000 }
+        );
+      }
     }
     
     setBatchPrompts('');
@@ -245,27 +282,55 @@ export function ImageGallery({
     }
   };
 
+  const downloadAsZip = async (imagesToDownload: GeneratedImage[], zipName: string) => {
+    setDownloadingZip(true);
+    try {
+      const zip = new JSZip();
+      
+      for (let i = 0; i < imagesToDownload.length; i++) {
+        const img = imagesToDownload[i];
+        let imageData: Blob;
+        
+        if (img.image_url.startsWith('data:')) {
+          // Convert base64 to blob
+          const base64Data = img.image_url.split(',')[1];
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let j = 0; j < byteCharacters.length; j++) {
+            byteNumbers[j] = byteCharacters.charCodeAt(j);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          imageData = new Blob([byteArray], { type: 'image/png' });
+        } else {
+          const response = await fetch(img.image_url);
+          imageData = await response.blob();
+        }
+        
+        zip.file(`imagen-${i + 1}.png`, imageData);
+      }
+      
+      const content = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = `${zipName}.zip`;
+      link.click();
+      
+      toast.success('Download ZIP concluído!');
+    } catch (error) {
+      console.error('Error creating zip:', error);
+      toast.error('Erro ao criar arquivo ZIP');
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
+
   const downloadSelected = async () => {
     const selectedImgs = displayImages.filter(img => selectedImages.includes(img.id));
-    toast.info(`Baixando ${selectedImgs.length} imagens...`);
-    
-    for (let i = 0; i < selectedImgs.length; i++) {
-      await downloadImage(selectedImgs[i].image_url, `imagen-${i + 1}.png`);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    toast.success('Download concluído!');
+    await downloadAsZip(selectedImgs, `imagens-selecionadas-${Date.now()}`);
   };
 
   const downloadAll = async () => {
-    toast.info(`Baixando ${displayImages.length} imagens...`);
-    
-    for (let i = 0; i < displayImages.length; i++) {
-      await downloadImage(displayImages[i].image_url, `imagen-${i + 1}.png`);
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    toast.success('Download concluído!');
+    await downloadAsZip(displayImages, `todas-imagens-${Date.now()}`);
   };
 
   const hasCredentials = !!googleCookie;
@@ -475,9 +540,18 @@ export function ImageGallery({
                   <Button size="sm" variant="ghost" onClick={deselectAll}>
                     Limpar seleção
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={downloadSelected}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Baixar ({selectedImages.length})
+                  <Button 
+                    size="sm" 
+                    variant="secondary" 
+                    onClick={downloadSelected}
+                    disabled={downloadingZip}
+                  >
+                    {downloadingZip ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Baixar ZIP ({selectedImages.length})
                   </Button>
                   <Button 
                     size="sm" 
@@ -496,9 +570,18 @@ export function ImageGallery({
                   <Button size="sm" variant="ghost" onClick={selectAll}>
                     Selecionar todas
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={downloadAll}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Baixar Todas
+                  <Button 
+                    size="sm" 
+                    variant="secondary" 
+                    onClick={downloadAll}
+                    disabled={downloadingZip}
+                  >
+                    {downloadingZip ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Baixar Todas (ZIP)
                   </Button>
                 </>
               )}
