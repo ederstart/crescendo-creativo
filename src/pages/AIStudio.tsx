@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Star, Layers } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Captions } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -13,22 +13,30 @@ import { ScriptGenerator } from '@/components/ai/ScriptGenerator';
 import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
+import { SRTGenerator } from '@/components/ai/SRTGenerator';
 import { toast } from 'sonner';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
 const SCRIPT_STORAGE_KEY = 'ai_studio_generated_script';
 const SCRIPT_TITLE_STORAGE_KEY = 'ai_studio_script_title';
 
+interface Script {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export default function AIStudio() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
   const { images, saveImage, deleteImage, deleteMultiple } = useGeneratedImages();
   
-  // Load from localStorage on mount
   const [generatedScript, setGeneratedScript] = useState(() => {
     return localStorage.getItem(SCRIPT_STORAGE_KEY) || '';
   });
@@ -38,8 +46,31 @@ export default function AIStudio() {
   const [selectedScriptPrompt, setSelectedScriptPrompt] = useState('');
   const [selectedScenePrompt, setSelectedScenePrompt] = useState('');
   const [savingScript, setSavingScript] = useState(false);
+  const [selectedScriptsForSRT, setSelectedScriptsForSRT] = useState<Script[]>([]);
+  
+  // Handle tab from URL
+  const tabFromUrl = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'script');
 
-  // Persist script and title to localStorage
+  // Load scripts from navigation state
+  useEffect(() => {
+    const loadSelectedScripts = async () => {
+      const state = location.state as { selectedScriptIds?: string[] } | null;
+      if (state?.selectedScriptIds && state.selectedScriptIds.length > 0) {
+        const { data } = await supabase
+          .from('scripts')
+          .select('id, title, content')
+          .in('id', state.selectedScriptIds);
+        
+        if (data) {
+          setSelectedScriptsForSRT(data);
+          setActiveTab('subtitles');
+        }
+      }
+    };
+    loadSelectedScripts();
+  }, [location.state]);
+
   useEffect(() => {
     if (generatedScript) {
       localStorage.setItem(SCRIPT_STORAGE_KEY, generatedScript);
@@ -52,7 +83,7 @@ export default function AIStudio() {
     }
   }, [scriptTitle]);
 
-  const handleScriptGenerated = (content: string, model: string) => {
+  const handleScriptGenerated = (content: string) => {
     setGeneratedScript(content);
   };
 
@@ -63,7 +94,6 @@ export default function AIStudio() {
 
   const handleTemplateSelect = (template: { content: string }) => {
     setSelectedScriptPrompt(template.content);
-    // Focus on prompt input
     toast.success('Template carregado! Complete seu pedido abaixo.');
   };
 
@@ -104,7 +134,6 @@ export default function AIStudio() {
 
       if (error) throw error;
 
-      // Clear localStorage after successful save
       localStorage.removeItem(SCRIPT_STORAGE_KEY);
       localStorage.removeItem(SCRIPT_TITLE_STORAGE_KEY);
       
@@ -140,7 +169,7 @@ export default function AIStudio() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">AI Studio</h1>
-          <p className="text-muted-foreground mt-1">Gere roteiros, cenas e imagens com IA</p>
+          <p className="text-muted-foreground mt-1">Gere roteiros, cenas, imagens e legendas com IA</p>
         </div>
         <Button variant="ghost" asChild>
           <NavLink to="/settings">
@@ -150,8 +179,8 @@ export default function AIStudio() {
         </Button>
       </div>
 
-      <Tabs defaultValue="script" className="space-y-6">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="script" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Roteiro
@@ -168,9 +197,12 @@ export default function AIStudio() {
             <Image className="w-4 h-4" />
             Imagens
           </TabsTrigger>
+          <TabsTrigger value="subtitles" className="flex items-center gap-2">
+            <Captions className="w-4 h-4" />
+            Legendas
+          </TabsTrigger>
         </TabsList>
 
-        {/* Script Tab */}
         <TabsContent value="script" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="glass rounded-xl p-6">
@@ -204,12 +236,10 @@ export default function AIStudio() {
               <div className="flex flex-col gap-4 mb-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-foreground">Roteiro Gerado</h3>
-                  <div className="flex gap-2">
-                    <Button variant="secondary" size="sm" onClick={copyScript}>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copiar
-                    </Button>
-                  </div>
+                  <Button variant="secondary" size="sm" onClick={copyScript}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copiar
+                  </Button>
                 </div>
                 
                 <div className="flex items-end gap-4">
@@ -244,7 +274,6 @@ export default function AIStudio() {
           )}
         </TabsContent>
 
-        {/* Multi-Step Wizard Tab */}
         <TabsContent value="wizard" className="space-y-6">
           <div className="glass rounded-xl p-6 max-w-3xl mx-auto">
             <h3 className="text-lg font-semibold text-foreground mb-4">Roteiro em Etapas</h3>
@@ -266,7 +295,6 @@ export default function AIStudio() {
           </div>
         </TabsContent>
 
-        {/* Scene Tab */}
         <TabsContent value="scene" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="glass rounded-xl p-6">
@@ -287,7 +315,6 @@ export default function AIStudio() {
                 groqApiKey={settings?.groq_api_key}
                 geminiApiKey={settings?.gemini_api_key}
                 openrouterApiKey={settings?.openrouter_api_key}
-                scriptContent={generatedScript}
                 defaultStylePrompt={selectedScenePrompt || defaultSceneTemplate?.content || ''}
                 preferredModel={settings?.preferred_model_scene || 'groq'}
                 onPromptsGenerated={() => {}}
@@ -297,7 +324,6 @@ export default function AIStudio() {
           </div>
         </TabsContent>
 
-        {/* Images Tab */}
         <TabsContent value="images">
           <div className="glass rounded-xl p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens (Whisk)</h3>
@@ -309,6 +335,16 @@ export default function AIStudio() {
               onDeleteImage={deleteImage}
               onDeleteMultiple={deleteMultiple}
             />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="subtitles">
+          <div className="glass rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Gerador de Legendas SRT</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Transforme roteiros em arquivos SRT com intervalos de 30 segundos e máximo de 500 caracteres por legenda.
+            </p>
+            <SRTGenerator selectedScripts={selectedScriptsForSRT} />
           </div>
         </TabsContent>
       </Tabs>

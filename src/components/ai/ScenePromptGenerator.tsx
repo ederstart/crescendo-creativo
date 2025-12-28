@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Wand2, Copy, Check, Star } from 'lucide-react';
+import { Loader2, Wand2, Copy, Check, Star, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ScenePrompt {
   number: number;
@@ -15,11 +16,16 @@ interface ScenePrompt {
   prompt: string;
 }
 
+interface Script {
+  id: string;
+  title: string;
+  content: string;
+}
+
 interface ScenePromptGeneratorProps {
   groqApiKey?: string;
   geminiApiKey?: string;
   openrouterApiKey?: string;
-  scriptContent: string;
   defaultStylePrompt?: string;
   preferredModel?: string;
   onPromptsGenerated: (prompts: ScenePrompt[]) => void;
@@ -30,12 +36,12 @@ export function ScenePromptGenerator({
   groqApiKey,
   geminiApiKey,
   openrouterApiKey,
-  scriptContent,
   defaultStylePrompt = '',
   preferredModel = 'groq',
   onPromptsGenerated,
   onFavoriteModel,
 }: ScenePromptGeneratorProps) {
+  const { user } = useAuth();
   const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
   const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('scenes');
   const [numberOfScenes, setNumberOfScenes] = useState(5);
@@ -44,6 +50,11 @@ export function ScenePromptGenerator({
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  
+  // Script selection
+  const [scripts, setScripts] = useState<Script[]>([]);
+  const [selectedScriptId, setSelectedScriptId] = useState<string>('');
+  const [loadingScripts, setLoadingScripts] = useState(true);
 
   // Update model when preferredModel changes
   useEffect(() => {
@@ -52,9 +63,38 @@ export function ScenePromptGenerator({
     }
   }, [preferredModel]);
 
+  // Fetch user scripts
+  useEffect(() => {
+    if (user) {
+      fetchScripts();
+    }
+  }, [user]);
+
+  const fetchScripts = async () => {
+    setLoadingScripts(true);
+    const { data, error } = await supabase
+      .from('scripts')
+      .select('id, title, content')
+      .eq('user_id', user?.id)
+      .order('updated_at', { ascending: false });
+
+    if (!error && data) {
+      setScripts(data.filter(s => s.content && s.content.trim()));
+    }
+    setLoadingScripts(false);
+  };
+
+  const selectedScript = scripts.find(s => s.id === selectedScriptId);
+  const scriptContent = selectedScript?.content || '';
+
+  // Calculate estimated scenes based on character mode
+  const estimatedScenes = splitMode === 'characters' && scriptContent
+    ? Math.ceil(scriptContent.length / charactersPerScene)
+    : numberOfScenes;
+
   const handleGenerate = async () => {
     if (!scriptContent.trim()) {
-      toast.error('Primeiro gere ou cole um roteiro na aba anterior');
+      toast.error('Selecione um roteiro primeiro');
       return;
     }
 
@@ -118,6 +158,48 @@ export function ScenePromptGenerator({
 
   return (
     <div className="space-y-4">
+      {/* Script Selection */}
+      <div>
+        <Label>Selecionar Roteiro</Label>
+        <Select value={selectedScriptId} onValueChange={setSelectedScriptId}>
+          <SelectTrigger className="mt-1">
+            <SelectValue placeholder={loadingScripts ? "Carregando..." : "Escolha um roteiro salvo"} />
+          </SelectTrigger>
+          <SelectContent>
+            {scripts.length === 0 ? (
+              <SelectItem value="none" disabled>
+                Nenhum roteiro salvo
+              </SelectItem>
+            ) : (
+              scripts.map((script) => (
+                <SelectItem key={script.id} value={script.id}>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    <span>{script.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({script.content?.length || 0} chars)
+                    </span>
+                  </div>
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {selectedScript && (
+        <div className="bg-muted/50 rounded-lg p-3">
+          <Label className="text-muted-foreground text-xs">Roteiro Selecionado</Label>
+          <p className="text-sm font-medium mt-1">{selectedScript.title}</p>
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+            {scriptContent.substring(0, 200)}...
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {scriptContent.length} caracteres
+          </p>
+        </div>
+      )}
+
       <div>
         <div className="flex items-center justify-between mb-1">
           <Label>Modelo de IA</Label>
@@ -184,7 +266,7 @@ export function ScenePromptGenerator({
           <Input
             type="number"
             min={1}
-            max={20}
+            max={50}
             value={numberOfScenes}
             onChange={(e) => setNumberOfScenes(parseInt(e.target.value) || 5)}
             className="mt-1"
@@ -196,39 +278,33 @@ export function ScenePromptGenerator({
           <Input
             type="number"
             min={100}
-            max={2000}
+            max={5000}
             step={100}
             value={charactersPerScene}
             onChange={(e) => setCharactersPerScene(parseInt(e.target.value) || 500)}
             className="mt-1"
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            O roteiro será dividido a cada ~{charactersPerScene} caracteres
-          </p>
+          {scriptContent && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Estimativa: ~{estimatedScenes} cenas para {scriptContent.length} caracteres
+            </p>
+          )}
         </div>
       )}
 
       <div>
-        <Label>Estilo Visual Base (opcional)</Label>
+        <Label>Estilo Visual / Instruções (do Template)</Label>
         <Textarea
           value={stylePrompt}
           onChange={(e) => setStylePrompt(e.target.value)}
-          placeholder="Ex: Ilustração digital estilo anime, cores vibrantes, iluminação dramática..."
-          rows={2}
+          placeholder="Ex: Ilustração digital estilo anime, cores vibrantes, personagem principal tem cabelos azuis..."
+          rows={3}
           className="mt-1 font-mono text-sm"
         />
+        <p className="text-xs text-muted-foreground mt-1">
+          Descreva o estilo visual, características dos personagens e qualquer instrução específica
+        </p>
       </div>
-
-      {scriptContent ? (
-        <div className="bg-muted/50 rounded-lg p-3">
-          <Label className="text-muted-foreground text-xs">Roteiro Anexado</Label>
-          <p className="text-sm mt-1 line-clamp-3">{scriptContent.substring(0, 200)}...</p>
-        </div>
-      ) : (
-        <div className="bg-destructive/10 rounded-lg p-3 text-center">
-          <p className="text-sm text-destructive">Gere um roteiro primeiro na aba "Roteiro"</p>
-        </div>
-      )}
 
       <Button
         onClick={handleGenerate}
@@ -244,7 +320,7 @@ export function ScenePromptGenerator({
         ) : (
           <>
             <Wand2 className="w-4 h-4 mr-2" />
-            Gerar Prompts de Cenas
+            Gerar {splitMode === 'characters' ? `~${estimatedScenes}` : numberOfScenes} Prompts de Cenas
           </>
         )}
       </Button>
