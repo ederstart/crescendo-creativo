@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Sparkles, Upload, FileText, X } from 'lucide-react';
+import { Loader2, Sparkles, Upload, FileText, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -12,7 +12,9 @@ interface ScriptGeneratorProps {
   geminiApiKey?: string;
   openrouterApiKey?: string;
   defaultPrompt?: string;
+  preferredModel?: string;
   onGenerated: (content: string, model: string) => void;
+  onFavoriteModel?: (model: string) => void;
 }
 
 export function ScriptGenerator({ 
@@ -20,14 +22,23 @@ export function ScriptGenerator({
   geminiApiKey,
   openrouterApiKey,
   defaultPrompt = '',
-  onGenerated 
+  preferredModel = 'groq',
+  onGenerated,
+  onFavoriteModel,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>('groq');
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
   const [loading, setLoading] = useState(false);
   const [attachedContent, setAttachedContent] = useState('');
   const [attachedFileName, setAttachedFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Update model when preferredModel changes
+  useEffect(() => {
+    if (preferredModel && ['groq', 'gemini', 'qwen'].includes(preferredModel)) {
+      setModel(preferredModel as 'groq' | 'gemini' | 'qwen');
+    }
+  }, [preferredModel]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -95,31 +106,48 @@ export function ScriptGenerator({
   };
 
   const hasApiKey = !!getApiKey(model);
+  const isFavorite = model === preferredModel;
 
   return (
     <div className="space-y-4">
       <div>
-        <Label>Modelo de IA</Label>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Modelo de IA</Label>
+          {onFavoriteModel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onFavoriteModel(model)}
+              className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
+            >
+              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+              {isFavorite ? 'Favorito' : 'Favoritar'}
+            </Button>
+          )}
+        </div>
         <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
-          <SelectTrigger className="mt-1">
+          <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="groq">
               <div className="flex items-center gap-2">
                 <span>Groq (Llama 3.3 70B)</span>
+                {preferredModel === 'groq' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
                 {!groqApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
               </div>
             </SelectItem>
             <SelectItem value="gemini">
               <div className="flex items-center gap-2">
                 <span>Gemini 2.5 Flash</span>
+                {preferredModel === 'gemini' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
                 {!geminiApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
               </div>
             </SelectItem>
             <SelectItem value="qwen">
               <div className="flex items-center gap-2">
                 <span>Qwen3 Coder (OpenRouter)</span>
+                {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
                 {!openrouterApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
               </div>
             </SelectItem>

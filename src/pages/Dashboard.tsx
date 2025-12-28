@@ -116,25 +116,25 @@ export default function Dashboard() {
         <div className="glass rounded-xl p-6 shadow-card">
           <h2 className="text-xl font-display font-semibold text-foreground mb-4">Ações Rápidas</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="fire" asChild>
+            <Button variant="fire" asChild className="h-12">
               <Link to="/ai-studio">
                 <Sparkles className="w-4 h-4" />
                 AI Studio
               </Link>
             </Button>
-            <Button variant="secondary" asChild>
+            <Button variant="outline" asChild className="h-12 border-primary/30 hover:bg-primary/10 hover:border-primary">
               <Link to="/scripts/new">
                 <Plus className="w-4 h-4" />
                 Novo Roteiro
               </Link>
             </Button>
-            <Button variant="secondary" asChild>
+            <Button variant="outline" asChild className="h-12 border-purple-500/30 hover:bg-purple-500/10 hover:border-purple-500 text-purple-400 hover:text-purple-300">
               <Link to="/mood-boards/new">
                 <Image className="w-4 h-4" />
                 Mood Board
               </Link>
             </Button>
-            <Button variant="ghost" asChild>
+            <Button variant="outline" asChild className="h-12 border-secondary/30 hover:bg-secondary/10 hover:border-secondary text-secondary hover:text-secondary">
               <Link to="/ai-studio">
                 <Wand2 className="w-4 h-4" />
                 Gerar Cenas

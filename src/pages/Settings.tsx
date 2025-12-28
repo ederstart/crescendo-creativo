@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { User, Lock, Bot, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { User, Lock, Bot, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 
 export default function Settings() {
   const { user, signOut } = useAuth();
@@ -15,6 +15,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [validatingWhisk, setValidatingWhisk] = useState(false);
+  const [whiskValidationResult, setWhiskValidationResult] = useState<'success' | 'error' | null>(null);
   const [groqKey, setGroqKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
@@ -42,27 +43,56 @@ export default function Settings() {
   };
 
   const handleSaveAISettings = async () => {
-    const newWhiskToken = whiskToken || settings?.whisk_token;
-    const newWhiskSessionId = whiskSessionId || settings?.whisk_session_id;
-
-    // Validate Whisk credentials if they changed
-    if ((whiskToken || whiskSessionId) && newWhiskToken && newWhiskSessionId) {
-      setValidatingWhisk(true);
-      const isValid = await validateWhiskToken(newWhiskToken, newWhiskSessionId);
-      setValidatingWhisk(false);
-      
-      if (!isValid) {
-        return; // Don't save if validation failed
-      }
-    }
-
     await saveSettings({
       groq_api_key: groqKey || settings?.groq_api_key,
       gemini_api_key: geminiKey || settings?.gemini_api_key,
       openrouter_api_key: openrouterKey || settings?.openrouter_api_key,
-      whisk_token: newWhiskToken,
-      whisk_session_id: newWhiskSessionId,
+      whisk_token: whiskToken || settings?.whisk_token,
+      whisk_session_id: whiskSessionId || settings?.whisk_session_id,
     });
+  };
+
+  const handleWhiskValidation = async () => {
+    const token = whiskToken || settings?.whisk_token;
+    const sessionId = whiskSessionId || settings?.whisk_session_id;
+
+    if (!token || !sessionId) {
+      toast.error('Configure o Token e Session ID do Whisk primeiro');
+      return;
+    }
+
+    setValidatingWhisk(true);
+    setWhiskValidationResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-whisk-image', {
+        body: {
+          prompt: 'A simple red circle on white background, minimal, clean',
+          token,
+          sessionId,
+          aspectRatio: '1:1',
+        },
+      });
+
+      if (error) throw error;
+      
+      if (data.error) {
+        setWhiskValidationResult('error');
+        toast.error('Validação falhou: ' + data.error);
+        if (data.suggestion) {
+          toast.info(data.suggestion);
+        }
+      } else if (data.imageUrl) {
+        setWhiskValidationResult('success');
+        toast.success('Validação do Whisk realizada com sucesso!');
+      }
+    } catch (error) {
+      console.error('Whisk validation error:', error);
+      setWhiskValidationResult('error');
+      toast.error('Erro ao validar Whisk. Verifique o Token e Session ID.');
+    } finally {
+      setValidatingWhisk(false);
+    }
   };
 
   return (
@@ -175,42 +205,68 @@ export default function Settings() {
               className="bg-muted border-border mt-1 font-mono text-sm"
             />
           </div>
-          <div>
-            <Label>Whisk Token</Label>
-            <Input
-              type={showKeys ? 'text' : 'password'}
-              defaultValue={settings?.whisk_token || ''}
-              onChange={(e) => setWhiskToken(e.target.value)}
-              placeholder="Token do Google Labs Whisk"
-              className="bg-muted border-border mt-1 font-mono text-sm"
-            />
+          
+          <div className="border-t border-border pt-4 mt-4">
+            <h3 className="text-sm font-medium text-foreground mb-3">Google Labs Whisk</h3>
+            <div className="space-y-3">
+              <div>
+                <Label>Whisk Token</Label>
+                <Input
+                  type={showKeys ? 'text' : 'password'}
+                  defaultValue={settings?.whisk_token || ''}
+                  onChange={(e) => setWhiskToken(e.target.value)}
+                  placeholder="Token do Google Labs Whisk"
+                  className="bg-muted border-border mt-1 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label>Whisk Session ID</Label>
+                <Input
+                  type={showKeys ? 'text' : 'password'}
+                  defaultValue={settings?.whisk_session_id || ''}
+                  onChange={(e) => setWhiskSessionId(e.target.value)}
+                  placeholder="__Secure-1PSID do cookie"
+                  className="bg-muted border-border mt-1 font-mono text-sm"
+                />
+              </div>
+              
+              <Button 
+                variant="outline"
+                onClick={handleWhiskValidation}
+                disabled={validatingWhisk}
+                className="w-full"
+              >
+                {validatingWhisk ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Validando Whisk...
+                  </>
+                ) : whiskValidationResult === 'success' ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
+                    Whisk Validado com Sucesso
+                  </>
+                ) : whiskValidationResult === 'error' ? (
+                  <>
+                    <XCircle className="w-4 h-4 mr-2 text-destructive" />
+                    Falhou - Clique para tentar novamente
+                  </>
+                ) : (
+                  'Validar Whisk'
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Gera uma imagem de teste para validar se as credenciais estão funcionando
+              </p>
+            </div>
           </div>
-          <div>
-            <Label>Whisk Session ID</Label>
-            <Input
-              type={showKeys ? 'text' : 'password'}
-              defaultValue={settings?.whisk_session_id || ''}
-              onChange={(e) => setWhiskSessionId(e.target.value)}
-              placeholder="__Secure-1PSID do cookie"
-              className="bg-muted border-border mt-1 font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              As credenciais do Whisk serão validadas automaticamente ao salvar
-            </p>
-          </div>
+
           <Button 
-            variant="secondary"
+            variant="fire"
             onClick={handleSaveAISettings}
-            disabled={validatingWhisk}
+            className="w-full"
           >
-            {validatingWhisk ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Validando...
-              </>
-            ) : (
-              'Salvar Configurações de IA'
-            )}
+            Salvar Configurações de IA
           </Button>
         </div>
       </div>
