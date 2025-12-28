@@ -6,16 +6,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { User, Lock, Database, Bot, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Bot, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function Settings() {
   const { user, signOut } = useAuth();
-  const { settings, saveSettings } = useAISettings();
+  const { settings, saveSettings, validateWhiskToken } = useAISettings();
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  const [validatingWhisk, setValidatingWhisk] = useState(false);
   const [groqKey, setGroqKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
+  const [openrouterKey, setOpenrouterKey] = useState('');
   const [whiskToken, setWhiskToken] = useState('');
   const [whiskSessionId, setWhiskSessionId] = useState('');
 
@@ -39,6 +41,30 @@ export default function Settings() {
     setLoading(false);
   };
 
+  const handleSaveAISettings = async () => {
+    const newWhiskToken = whiskToken || settings?.whisk_token;
+    const newWhiskSessionId = whiskSessionId || settings?.whisk_session_id;
+
+    // Validate Whisk credentials if they changed
+    if ((whiskToken || whiskSessionId) && newWhiskToken && newWhiskSessionId) {
+      setValidatingWhisk(true);
+      const isValid = await validateWhiskToken(newWhiskToken, newWhiskSessionId);
+      setValidatingWhisk(false);
+      
+      if (!isValid) {
+        return; // Don't save if validation failed
+      }
+    }
+
+    await saveSettings({
+      groq_api_key: groqKey || settings?.groq_api_key,
+      gemini_api_key: geminiKey || settings?.gemini_api_key,
+      openrouter_api_key: openrouterKey || settings?.openrouter_api_key,
+      whisk_token: newWhiskToken,
+      whisk_session_id: newWhiskSessionId,
+    });
+  };
+
   return (
     <div className="p-8 animate-fade-in max-w-2xl">
       <h1 className="text-3xl font-display font-bold text-foreground mb-8">
@@ -53,9 +79,7 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground">Conta</h2>
-            <p className="text-sm text-muted-foreground">
-              Gerencie suas informações
-            </p>
+            <p className="text-sm text-muted-foreground">Gerencie suas informações</p>
           </div>
         </div>
 
@@ -79,9 +103,7 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground">Segurança</h2>
-            <p className="text-sm text-muted-foreground">
-              Altere sua senha
-            </p>
+            <p className="text-sm text-muted-foreground">Altere sua senha</p>
           </div>
         </div>
 
@@ -96,13 +118,10 @@ export default function Settings() {
               className="bg-muted border-border mt-1"
             />
           </div>
-          <Button 
-            variant="secondary" 
-            onClick={handlePasswordChange}
-            disabled={loading}
-          >
+          <Button variant="secondary" onClick={handlePasswordChange} disabled={loading}>
             Atualizar Senha
           </Button>
+        </div>
       </div>
 
       {/* AI Settings Section */}
@@ -147,6 +166,16 @@ export default function Settings() {
             />
           </div>
           <div>
+            <Label>OpenRouter API Key (Qwen)</Label>
+            <Input
+              type={showKeys ? 'text' : 'password'}
+              defaultValue={settings?.openrouter_api_key || ''}
+              onChange={(e) => setOpenrouterKey(e.target.value)}
+              placeholder="sk-or-..."
+              className="bg-muted border-border mt-1 font-mono text-sm"
+            />
+          </div>
+          <div>
             <Label>Whisk Token</Label>
             <Input
               type={showKeys ? 'text' : 'password'}
@@ -165,47 +194,24 @@ export default function Settings() {
               placeholder="__Secure-1PSID do cookie"
               className="bg-muted border-border mt-1 font-mono text-sm"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              As credenciais do Whisk serão validadas automaticamente ao salvar
+            </p>
           </div>
           <Button 
             variant="secondary"
-            onClick={() => saveSettings({
-              groq_api_key: groqKey || settings?.groq_api_key,
-              gemini_api_key: geminiKey || settings?.gemini_api_key,
-              whisk_token: whiskToken || settings?.whisk_token,
-              whisk_session_id: whiskSessionId || settings?.whisk_session_id,
-            })}
+            onClick={handleSaveAISettings}
+            disabled={validatingWhisk}
           >
-            Salvar Configurações de IA
+            {validatingWhisk ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Validando...
+              </>
+            ) : (
+              'Salvar Configurações de IA'
+            )}
           </Button>
-        </div>
-      </div>
-      </div>
-
-      {/* Database Info */}
-      <div className="glass rounded-xl p-6 mb-6">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-            <Database className="w-5 h-5 text-foreground" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-foreground">Supabase</h2>
-            <p className="text-sm text-muted-foreground">
-              Configuração do banco de dados
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-muted rounded-lg p-4">
-          <p className="text-sm text-muted-foreground mb-2">
-            Para configurar o Supabase, adicione as variáveis de ambiente:
-          </p>
-          <code className="text-xs text-primary block">
-            VITE_SUPABASE_URL=sua_url_aqui<br />
-            VITE_SUPABASE_ANON_KEY=sua_chave_aqui
-          </code>
-          <p className="text-xs text-muted-foreground mt-4">
-            O arquivo SQL com as tabelas está em: <code className="text-primary">src/lib/database.sql</code>
-          </p>
         </div>
       </div>
 

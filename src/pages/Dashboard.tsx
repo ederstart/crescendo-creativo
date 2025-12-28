@@ -6,7 +6,9 @@ import {
   TrendingUp, 
   Clock,
   Plus,
-  ArrowRight
+  ArrowRight,
+  Sparkles,
+  Wand2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
@@ -37,7 +39,6 @@ export default function Dashboard() {
   }, [user]);
 
   const fetchStats = async () => {
-    // Fetch scripts count
     const { count: scriptsCount } = await supabase
       .from('scripts')
       .select('*', { count: 'exact', head: true })
@@ -80,51 +81,24 @@ export default function Dashboard() {
   };
 
   const statCards = [
-    { 
-      icon: FileText, 
-      label: 'Total de Roteiros', 
-      value: stats.totalScripts,
-      color: 'text-primary'
-    },
-    { 
-      icon: TrendingUp, 
-      label: 'Concluídos', 
-      value: stats.completedScripts,
-      color: 'text-green-500'
-    },
-    { 
-      icon: Clock, 
-      label: 'Em Progresso', 
-      value: stats.inProgressScripts,
-      color: 'text-secondary'
-    },
-    { 
-      icon: Image, 
-      label: 'Mood Boards', 
-      value: stats.totalMoodBoards,
-      color: 'text-purple-500'
-    },
+    { icon: FileText, label: 'Total de Roteiros', value: stats.totalScripts, color: 'text-primary' },
+    { icon: TrendingUp, label: 'Concluídos', value: stats.completedScripts, color: 'text-green-500' },
+    { icon: Clock, label: 'Em Progresso', value: stats.inProgressScripts, color: 'text-secondary' },
+    { icon: Image, label: 'Mood Boards', value: stats.totalMoodBoards, color: 'text-purple-500' },
   ];
 
   return (
     <div className="p-8 animate-fade-in">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-display font-bold text-foreground mb-2">
           Olá, <span className="text-gradient-fire">Criador</span>!
         </h1>
-        <p className="text-muted-foreground">
-          Acompanhe seu progresso e gerencie seus projetos
-        </p>
+        <p className="text-muted-foreground">Acompanhe seu progresso e gerencie seus projetos</p>
       </div>
 
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {statCards.map((stat) => (
-          <div
-            key={stat.label}
-            className="glass rounded-xl p-6 shadow-card hover:shadow-glow transition-shadow"
-          >
+          <div key={stat.label} className="glass rounded-xl p-6 shadow-card hover:shadow-glow transition-shadow">
             <div className="flex items-center gap-4">
               <div className={`w-12 h-12 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
                 <stat.icon className="w-6 h-6" />
@@ -138,14 +112,17 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="glass rounded-xl p-6 shadow-card">
-          <h2 className="text-xl font-display font-semibold text-foreground mb-4">
-            Ações Rápidas
-          </h2>
+          <h2 className="text-xl font-display font-semibold text-foreground mb-4">Ações Rápidas</h2>
           <div className="grid grid-cols-2 gap-3">
             <Button variant="fire" asChild>
+              <Link to="/ai-studio">
+                <Sparkles className="w-4 h-4" />
+                AI Studio
+              </Link>
+            </Button>
+            <Button variant="secondary" asChild>
               <Link to="/scripts/new">
                 <Plus className="w-4 h-4" />
                 Novo Roteiro
@@ -153,8 +130,14 @@ export default function Dashboard() {
             </Button>
             <Button variant="secondary" asChild>
               <Link to="/mood-boards/new">
-                <Plus className="w-4 h-4" />
-                Novo Mood Board
+                <Image className="w-4 h-4" />
+                Mood Board
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link to="/ai-studio">
+                <Wand2 className="w-4 h-4" />
+                Gerar Cenas
               </Link>
             </Button>
           </div>
@@ -162,9 +145,7 @@ export default function Dashboard() {
 
         <div className="glass rounded-xl p-6 shadow-card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-display font-semibold text-foreground">
-              Roteiros Recentes
-            </h2>
+            <h2 className="text-xl font-display font-semibold text-foreground">Roteiros Recentes</h2>
             <Button variant="ghost" size="sm" asChild>
               <Link to="/scripts">
                 Ver todos
@@ -173,9 +154,7 @@ export default function Dashboard() {
             </Button>
           </div>
           {recentScripts.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              Nenhum roteiro ainda. Crie seu primeiro!
-            </p>
+            <p className="text-muted-foreground text-center py-8">Nenhum roteiro ainda. Crie seu primeiro!</p>
           ) : (
             <ul className="space-y-2">
               {recentScripts.map((script) => (
@@ -186,19 +165,15 @@ export default function Dashboard() {
                   >
                     <FileText className="w-5 h-5 text-primary" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {script.title}
-                      </p>
+                      <p className="text-sm font-medium text-foreground truncate">{script.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(script.updated_at).toLocaleDateString('pt-BR')}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded-full ${
-                      script.status === 'completed' 
-                        ? 'bg-green-500/20 text-green-500'
-                        : script.status === 'in_progress'
-                        ? 'bg-secondary/20 text-secondary'
-                        : 'bg-muted text-muted-foreground'
+                      script.status === 'completed' ? 'bg-green-500/20 text-green-500' :
+                      script.status === 'in_progress' ? 'bg-secondary/20 text-secondary' :
+                      'bg-muted text-muted-foreground'
                     }`}>
                       {script.status === 'completed' ? 'Concluído' : 
                        script.status === 'in_progress' ? 'Em progresso' : 'Rascunho'}

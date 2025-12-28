@@ -50,6 +50,7 @@ export type Database = {
           gemini_api_key: string | null
           groq_api_key: string | null
           id: string
+          openrouter_api_key: string | null
           updated_at: string
           user_id: string
           whisk_session_id: string | null
@@ -60,6 +61,7 @@ export type Database = {
           gemini_api_key?: string | null
           groq_api_key?: string | null
           id?: string
+          openrouter_api_key?: string | null
           updated_at?: string
           user_id: string
           whisk_session_id?: string | null
@@ -70,6 +72,7 @@ export type Database = {
           gemini_api_key?: string | null
           groq_api_key?: string | null
           id?: string
+          openrouter_api_key?: string | null
           updated_at?: string
           user_id?: string
           whisk_session_id?: string | null
