@@ -7,15 +7,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const BATCH_SIZE = 30;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, stylePrompt } = await req.json();
+    const { scriptContent, splitMode, numberOfScenes, charactersPerScene, model, stylePrompt, batchIndex, totalBatches, scriptPart, scenesPerBatch } = await req.json();
     
-    if (!scriptContent) {
+    // Se for uma requisição de lote específico, usa o scriptPart
+    const contentToProcess = scriptPart || scriptContent;
+    
+    if (!contentToProcess) {
       throw new Error('Script content is required');
     }
 
@@ -69,31 +74,42 @@ serve(async (req) => {
       throw new Error(`API key for ${modelName} not configured. Please add it in Settings.`);
     }
 
-    // Determine scene count based on split mode
-    let sceneCount = numberOfScenes || 5;
+    // Determine scene count for this batch
+    let sceneCount = scenesPerBatch || numberOfScenes || BATCH_SIZE;
     if (splitMode === 'characters' && charactersPerScene) {
-      sceneCount = Math.ceil(scriptContent.length / charactersPerScene);
+      sceneCount = Math.ceil(contentToProcess.length / charactersPerScene);
     }
+    
+    // Cap at BATCH_SIZE per request
+    sceneCount = Math.min(sceneCount, BATCH_SIZE);
+
+    // Context for batch processing
+    const batchContext = batchIndex !== undefined && totalBatches !== undefined
+      ? `Esta é a parte ${batchIndex + 1} de ${totalBatches} do roteiro. Gere prompts apenas para esta parte específica, continuando a narrativa.`
+      : '';
 
     const systemPrompt = `Você é um especialista em criar prompts para geração de imagens. 
-Sua tarefa é analisar um roteiro de vídeo e criar ${sceneCount} prompts detalhados para geração de cenas/ilustrações.
+Sua tarefa é analisar um roteiro de vídeo e criar exatamente ${sceneCount} prompts detalhados para geração de cenas/ilustrações.
+
+${batchContext}
 
 Regras:
 1. Cada prompt deve ser visual e descritivo
 2. Inclua detalhes de iluminação, estilo artístico, ângulo de câmera
 3. Mantenha consistência visual entre as cenas
 4. Os prompts devem estar em inglês para melhor compatibilidade
-5. Retorne APENAS um JSON com array de prompts, sem explicações
-6. Divida o roteiro em exatamente ${sceneCount} partes proporcionais
+5. Retorne APENAS um JSON válido com array de prompts, sem texto adicional
+6. Divida este trecho do roteiro em exatamente ${sceneCount} partes proporcionais
+7. NÃO inclua descrições longas em português, apenas uma frase curta de no máximo 15 palavras
 
 ${stylePrompt ? `Estilo base para todas as cenas: ${stylePrompt}` : ''}
 
-Formato de resposta (JSON):
+Formato de resposta (JSON VÁLIDO APENAS):
 {
   "scenes": [
     {
       "number": 1,
-      "description": "Breve descrição da cena em português",
+      "description": "Frase curta da cena",
       "prompt": "Detailed image generation prompt in English"
     }
   ]
@@ -102,7 +118,7 @@ Formato de resposta (JSON):
     let response;
     let generatedText = '';
 
-    console.log(`Generating scene prompts using model: ${model}`);
+    console.log(`Generating ${sceneCount} scene prompts using model: ${model}${batchIndex !== undefined ? ` (batch ${batchIndex + 1}/${totalBatches})` : ''}`);
 
     if (model === 'groq') {
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -115,9 +131,9 @@ Formato de resposta (JSON):
           model: 'llama-3.3-70b-versatile',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Roteiro:\n\n${scriptContent}` }
+            { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
           ],
-          max_tokens: 4096,
+          max_tokens: 8192,
           response_format: { type: 'json_object' },
         }),
       });
@@ -140,11 +156,11 @@ Formato de resposta (JSON):
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `${systemPrompt}\n\nRoteiro:\n\n${scriptContent}`
+              text: `${systemPrompt}\n\nRoteiro:\n\n${contentToProcess}`
             }]
           }],
           generationConfig: {
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
             responseMimeType: 'application/json',
           }
         }),
@@ -170,8 +186,9 @@ Formato de resposta (JSON):
           model: 'qwen/qwen3-coder:free',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Roteiro:\n\n${scriptContent}` }
+            { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
           ],
+          max_tokens: 8192,
         }),
       });
 
@@ -187,25 +204,54 @@ Formato de resposta (JSON):
       throw new Error('Invalid model specified');
     }
 
-    // Parse the JSON response
+    // Parse the JSON response - improved parsing
     let scenes;
     try {
-      const parsed = JSON.parse(generatedText);
+      // Remove any markdown code blocks if present
+      let cleanedText = generatedText.trim();
+      if (cleanedText.startsWith('```json')) {
+        cleanedText = cleanedText.slice(7);
+      } else if (cleanedText.startsWith('```')) {
+        cleanedText = cleanedText.slice(3);
+      }
+      if (cleanedText.endsWith('```')) {
+        cleanedText = cleanedText.slice(0, -3);
+      }
+      cleanedText = cleanedText.trim();
+      
+      const parsed = JSON.parse(cleanedText);
       scenes = parsed.scenes || parsed;
-    } catch {
+    } catch (parseError) {
+      console.error('Initial JSON parse failed, trying to extract JSON:', parseError);
       // If JSON parsing fails, try to extract JSON from the text
-      const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+      const jsonMatch = generatedText.match(/\{[\s\S]*"scenes"[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        scenes = parsed.scenes || parsed;
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          scenes = parsed.scenes || parsed;
+        } catch {
+          console.error('Failed to parse extracted JSON');
+          throw new Error('Failed to parse scene prompts - invalid JSON response');
+        }
       } else {
-        throw new Error('Failed to parse scene prompts');
+        throw new Error('Failed to parse scene prompts - no valid JSON found');
       }
     }
 
-    console.log(`Successfully generated ${scenes.length} scene prompts`);
+    // Ensure scenes is an array
+    if (!Array.isArray(scenes)) {
+      throw new Error('Invalid response format - scenes must be an array');
+    }
 
-    return new Response(JSON.stringify({ scenes, model }), {
+    console.log(`Successfully generated ${scenes.length} scene prompts${batchIndex !== undefined ? ` for batch ${batchIndex + 1}` : ''}`);
+
+    return new Response(JSON.stringify({ 
+      scenes, 
+      model,
+      batchIndex,
+      totalBatches,
+      generatedCount: scenes.length
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
