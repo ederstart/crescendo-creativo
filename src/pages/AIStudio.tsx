@@ -294,10 +294,14 @@ export default function AIStudio() {
             <ImageGallery
               whiskToken={settings?.whisk_token}
               whiskSessionId={settings?.whisk_session_id}
+              styleTemplate={settings?.style_template}
               images={images}
               onImageGenerated={saveImage}
               onDeleteImage={deleteImage}
               onDeleteMultiple={deleteMultiple}
+              onSaveStyleTemplate={async (template) => {
+                await saveSettings({ style_template: template });
+              }}
             />
           </div>
         </TabsContent>
