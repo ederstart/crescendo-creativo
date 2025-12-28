@@ -7,15 +7,19 @@ import {
   Filter,
   MoreVertical,
   Trash2,
-  Edit
+  Edit,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,17 +34,32 @@ interface Script {
   updated_at: string;
 }
 
-export default function Scripts() {
+interface ScriptsProps {
+  selectionMode?: boolean;
+  onSelectionChange?: (scripts: Script[]) => void;
+}
+
+export default function Scripts({ selectionMode = false, onSelectionChange }: ScriptsProps) {
   const { user } = useAuth();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(['draft', 'in_progress', 'completed']));
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchScripts();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (onSelectionChange) {
+      const selectedScripts = scripts.filter(s => selectedIds.has(s.id));
+      onSelectionChange(selectedScripts);
+    }
+  }, [selectedIds, scripts, onSelectionChange]);
 
   const fetchScripts = async () => {
     setLoading(true);
@@ -68,13 +87,57 @@ export default function Scripts() {
       toast.error('Erro ao excluir roteiro');
     } else {
       toast.success('Roteiro excluído');
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       fetchScripts();
     }
   };
 
-  const filteredScripts = scripts.filter((script) =>
-    script.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedIds.size === filteredScripts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredScripts.map(s => s.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const filteredScripts = scripts.filter((script) => {
+    const matchesSearch = script.title.toLowerCase().includes(search.toLowerCase()) ||
+      (script.content && script.content.toLowerCase().includes(search.toLowerCase()));
+    const matchesStatus = statusFilter.has(script.status);
+    return matchesSearch && matchesStatus;
+  });
 
   const getStatusBadge = (status: string) => {
     const styles = {
@@ -114,6 +177,27 @@ export default function Scripts() {
         </Button>
       </div>
 
+      {/* Selection Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-6 flex items-center justify-between">
+          <span className="text-sm font-medium text-foreground">
+            {selectedIds.size} roteiro(s) selecionado(s)
+          </span>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={clearSelection}>
+              <X className="w-4 h-4 mr-2" />
+              Limpar Seleção
+            </Button>
+            <Button variant="fire" size="sm" asChild>
+              <Link to="/ai-studio?tab=subtitles" state={{ selectedScriptIds: Array.from(selectedIds) }}>
+                <FileText className="w-4 h-4 mr-2" />
+                Gerar SRT
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Search & Filters */}
       <div className="flex gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
@@ -125,10 +209,43 @@ export default function Scripts() {
             className="pl-10 bg-muted border-border"
           />
         </div>
-        <Button variant="outline">
-          <Filter className="w-4 h-4" />
-          Filtros
-        </Button>
+        <DropdownMenu open={showFilters} onOpenChange={setShowFilters}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className={statusFilter.size < 3 ? 'border-primary' : ''}>
+              <Filter className="w-4 h-4 mr-2" />
+              Filtros
+              {statusFilter.size < 3 && (
+                <span className="ml-2 bg-primary text-primary-foreground text-xs rounded-full px-2">
+                  {statusFilter.size}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuCheckboxItem
+              checked={statusFilter.has('draft')}
+              onCheckedChange={() => toggleStatusFilter('draft')}
+            >
+              Rascunho
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={statusFilter.has('in_progress')}
+              onCheckedChange={() => toggleStatusFilter('in_progress')}
+            >
+              Em progresso
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={statusFilter.has('completed')}
+              onCheckedChange={() => toggleStatusFilter('completed')}
+            >
+              Concluído
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setStatusFilter(new Set(['draft', 'in_progress', 'completed']))}>
+              Mostrar todos
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Scripts Grid */}
@@ -143,69 +260,92 @@ export default function Scripts() {
             Nenhum roteiro encontrado
           </h3>
           <p className="text-muted-foreground mb-4">
-            Crie seu primeiro roteiro para começar
+            {search || statusFilter.size < 3 ? 'Tente ajustar seus filtros' : 'Crie seu primeiro roteiro para começar'}
           </p>
-          <Button variant="fire" asChild>
-            <Link to="/scripts/new">
-              <Plus className="w-4 h-4" />
-              Criar Roteiro
-            </Link>
-          </Button>
+          {!search && statusFilter.size === 3 && (
+            <Button variant="fire" asChild>
+              <Link to="/scripts/new">
+                <Plus className="w-4 h-4" />
+                Criar Roteiro
+              </Link>
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredScripts.map((script) => (
-            <div
-              key={script.id}
-              className="glass rounded-xl p-6 shadow-card hover:shadow-glow transition-all group"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-10 h-10 gradient-fire rounded-lg flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-primary-foreground" />
+        <>
+          {/* Select All */}
+          <div className="flex items-center gap-3 mb-4">
+            <Checkbox
+              checked={selectedIds.size === filteredScripts.length && filteredScripts.length > 0}
+              onCheckedChange={toggleAllSelection}
+            />
+            <span className="text-sm text-muted-foreground">
+              Selecionar todos ({filteredScripts.length})
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredScripts.map((script) => (
+              <div
+                key={script.id}
+                className={`glass rounded-xl p-6 shadow-card hover:shadow-glow transition-all group ${
+                  selectedIds.has(script.id) ? 'ring-2 ring-primary' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      checked={selectedIds.has(script.id)}
+                      onCheckedChange={() => toggleSelection(script.id)}
+                    />
+                    <div className="w-10 h-10 gradient-fire rounded-lg flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-primary-foreground" />
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link to={`/scripts/${script.id}`}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Editar
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => deleteScript(script.id)}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem asChild>
-                      <Link to={`/scripts/${script.id}`}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Editar
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => deleteScript(script.id)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Excluir
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
 
-              <Link to={`/scripts/${script.id}`}>
-                <h3 className="text-lg font-semibold text-foreground mb-2 hover:text-primary transition-colors">
-                  {script.title}
-                </h3>
-              </Link>
-              
-              <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                {script.content || 'Sem conteúdo ainda...'}
-              </p>
+                <Link to={`/scripts/${script.id}`}>
+                  <h3 className="text-lg font-semibold text-foreground mb-2 hover:text-primary transition-colors">
+                    {script.title}
+                  </h3>
+                </Link>
+                
+                <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
+                  {script.content || 'Sem conteúdo ainda...'}
+                </p>
 
-              <div className="flex items-center justify-between">
-                {getStatusBadge(script.status)}
-                <span className="text-xs text-muted-foreground">
-                  {new Date(script.updated_at).toLocaleDateString('pt-BR')}
-                </span>
+                <div className="flex items-center justify-between">
+                  {getStatusBadge(script.status)}
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(script.updated_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

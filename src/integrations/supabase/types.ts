@@ -357,6 +357,33 @@ export type Database = {
           },
         ]
       }
+      subtitles: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          source_script_ids: string[] | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          source_script_ids?: string[] | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          source_script_ids?: string[] | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       video_references: {
         Row: {
           created_at: string | null
