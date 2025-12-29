@@ -6,7 +6,9 @@ declare global {
         provider?: 'elevenlabs' | 'aws-polly';
         voice?: string;
         model?: string;
-      }) => Promise<Blob>;
+        language?: string;
+        engine?: 'standard' | 'neural' | 'long-form' | 'generative';
+      }) => Promise<HTMLAudioElement>;
       chat: (prompt: string, options?: {
         model?: string;
         stream?: boolean;
