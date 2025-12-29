@@ -52,6 +52,7 @@ export type Database = {
           groq_api_key: string | null
           id: string
           openrouter_api_key: string | null
+          preferred_claude_model: string | null
           preferred_model_image: string | null
           preferred_model_scene: string | null
           preferred_model_script: string | null
@@ -68,6 +69,7 @@ export type Database = {
           groq_api_key?: string | null
           id?: string
           openrouter_api_key?: string | null
+          preferred_claude_model?: string | null
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
@@ -84,6 +86,7 @@ export type Database = {
           groq_api_key?: string | null
           id?: string
           openrouter_api_key?: string | null
+          preferred_claude_model?: string | null
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
@@ -94,6 +97,47 @@ export type Database = {
           whisk_token?: string | null
         }
         Relationships: []
+      }
+      generated_audios: {
+        Row: {
+          audio_url: string
+          created_at: string | null
+          duration_seconds: number | null
+          id: string
+          model_used: string | null
+          text_content: string
+          user_id: string
+          voice_preset_id: string | null
+        }
+        Insert: {
+          audio_url: string
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          model_used?: string | null
+          text_content: string
+          user_id: string
+          voice_preset_id?: string | null
+        }
+        Update: {
+          audio_url?: string
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          model_used?: string | null
+          text_content?: string
+          user_id?: string
+          voice_preset_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_audios_voice_preset_id_fkey"
+            columns: ["voice_preset_id"]
+            isOneToOne: false
+            referencedRelation: "voice_presets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       generated_images: {
         Row: {
@@ -287,6 +331,36 @@ export type Database = {
         }
         Relationships: []
       }
+      script_ideas: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          priority: number | null
+          status: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          priority?: number | null
+          status?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          priority?: number | null
+          status?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       script_thumbnails: {
         Row: {
           created_at: string | null
@@ -430,6 +504,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      voice_presets: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_favorite: boolean | null
+          user_id: string
+          voice_id: string
+          voice_name: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          user_id: string
+          voice_id: string
+          voice_name: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          user_id?: string
+          voice_id?: string
+          voice_name?: string
+        }
+        Relationships: []
       }
     }
     Views: {

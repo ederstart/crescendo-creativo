@@ -12,6 +12,7 @@ interface AISettings {
   preferred_model_script?: string;
   preferred_model_scene?: string;
   preferred_model_image?: string;
+  preferred_claude_model?: string;
   style_template?: string;
   // Campos legados (mantidos para compatibilidade)
   whisk_token?: string;

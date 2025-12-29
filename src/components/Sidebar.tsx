@@ -9,7 +9,8 @@ import {
   Home,
   Plus,
   Sparkles,
-  Subtitles
+  Subtitles,
+  Volume2
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ const navItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Roteiros', path: '/scripts' },
   { icon: Sparkles, label: 'AI Studio', path: '/ai-studio' },
+  { icon: Volume2, label: 'Voice Generator', path: '/voice-generator' },
   { icon: Subtitles, label: 'Legendas', path: '/subtitles' },
   { icon: Image, label: 'Mood Boards', path: '/mood-boards' },
   { icon: Link2, label: 'Thumbnails', path: '/thumbnails' },
