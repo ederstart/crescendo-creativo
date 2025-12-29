@@ -30,6 +30,20 @@ const ELEVENLABS_MODELS = [
   { id: 'eleven_v3', name: 'V3 (Mais Novo)', description: 'Última versão' },
 ];
 
+// Amazon Polly voices (subset of popular ones)
+const POLLY_VOICES = [
+  { id: 'Camila', name: 'Camila', description: 'Português BR - Feminina' },
+  { id: 'Vitoria', name: 'Vitória', description: 'Português BR - Feminina' },
+  { id: 'Ricardo', name: 'Ricardo', description: 'Português BR - Masculina' },
+  { id: 'Thiago', name: 'Thiago', description: 'Português BR - Masculina' },
+  { id: 'Ines', name: 'Inês', description: 'Português PT - Feminina' },
+  { id: 'Cristiano', name: 'Cristiano', description: 'Português PT - Masculina' },
+  { id: 'Joanna', name: 'Joanna', description: 'English US - Female' },
+  { id: 'Matthew', name: 'Matthew', description: 'English US - Male' },
+  { id: 'Amy', name: 'Amy', description: 'English UK - Female' },
+  { id: 'Brian', name: 'Brian', description: 'English UK - Male' },
+];
+
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 export default function VoiceGenerator() {
@@ -49,6 +63,8 @@ export default function VoiceGenerator() {
   const [voiceId, setVoiceId] = useState('');
   const [voiceName, setVoiceName] = useState('');
   const [model, setModel] = useState('eleven_multilingual_v2');
+  const [provider, setProvider] = useState<'elevenlabs' | 'aws-polly'>('elevenlabs');
+  const [pollyVoice, setPollyVoice] = useState('Camila');
   const [loading, setLoading] = useState(false);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -82,19 +98,22 @@ export default function VoiceGenerator() {
       toast.error('Digite o texto para gerar áudio');
       return;
     }
-    if (!voiceId.trim()) {
-      toast.error('Informe o ID da voz');
+    
+    if (provider === 'elevenlabs' && !voiceId.trim()) {
+      toast.error('Informe o ID da voz ElevenLabs');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Use Puter.js for ElevenLabs
       const puterInstance = await loadPuter();
+      
+      // Use the appropriate provider
       const audioBlob = await puterInstance.ai.txt2speech(text, {
-        voice: voiceId,
-        model: model,
+        provider: provider,
+        voice: provider === 'elevenlabs' ? voiceId : pollyVoice,
+        ...(provider === 'elevenlabs' && { model: model }),
       });
 
       // Create URL for playback
@@ -107,14 +126,15 @@ export default function VoiceGenerator() {
         const duration = tempAudio.duration;
         
         // Save to database
-        await saveGeneratedAudio(audioBlob, text, model, undefined, duration);
+        const modelUsed = provider === 'elevenlabs' ? model : `polly-${pollyVoice}`;
+        await saveGeneratedAudio(audioBlob, text, modelUsed, undefined, duration);
         refetchAudios();
       };
 
       toast.success('Áudio gerado com sucesso!');
     } catch (error) {
       console.error('Error generating audio:', error);
-      toast.error('Erro ao gerar áudio. Verifique o ID da voz.');
+      toast.error(`Erro ao gerar áudio com ${provider === 'elevenlabs' ? 'ElevenLabs' : 'Amazon Polly'}`);
     } finally {
       setLoading(false);
     }
@@ -187,69 +207,121 @@ export default function VoiceGenerator() {
               <CardTitle>Configurações</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Voice ID */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ID da Voz</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input
-                      value={voiceId}
-                      onChange={(e) => setVoiceId(e.target.value)}
-                      placeholder="Ex: EXAVITQu4vr4xnSDxMaL"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowSavePreset(!showSavePreset)}
-                    >
-                      <Save className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <Label>Nome da Voz</Label>
-                  <Input
-                    value={voiceName}
-                    onChange={(e) => setVoiceName(e.target.value)}
-                    placeholder="Ex: Sarah"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              {showSavePreset && (
-                <div className="p-3 bg-muted rounded-lg flex gap-2 items-center">
-                  <span className="text-sm text-muted-foreground">Salvar como preset?</span>
-                  <Button size="sm" onClick={handleSavePreset}>
-                    Salvar
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setShowSavePreset(false)}>
-                    Cancelar
-                  </Button>
-                </div>
-              )}
-
-              {/* Model */}
+              {/* Provider Selector */}
               <div>
-                <Label>Modelo</Label>
-                <Select value={model} onValueChange={setModel}>
+                <Label>Provedor de Voz</Label>
+                <Select value={provider} onValueChange={(v: 'elevenlabs' | 'aws-polly') => setProvider(v)}>
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {ELEVENLABS_MODELS.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        <div>
-                          <span>{m.name}</span>
-                          <span className="text-xs text-muted-foreground ml-2">
-                            {m.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="elevenlabs">
+                      <div className="flex items-center gap-2">
+                        <span>🎙️ ElevenLabs</span>
+                        <span className="text-xs text-muted-foreground">Alta qualidade, IDs de voz</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="aws-polly">
+                      <div className="flex items-center gap-2">
+                        <span>☁️ Amazon Polly</span>
+                        <span className="text-xs text-muted-foreground">Vozes pré-definidas</span>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* ElevenLabs Config */}
+              {provider === 'elevenlabs' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>ID da Voz</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          value={voiceId}
+                          onChange={(e) => setVoiceId(e.target.value)}
+                          placeholder="Ex: EXAVITQu4vr4xnSDxMaL"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowSavePreset(!showSavePreset)}
+                        >
+                          <Save className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Nome da Voz</Label>
+                      <Input
+                        value={voiceName}
+                        onChange={(e) => setVoiceName(e.target.value)}
+                        placeholder="Ex: Sarah"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  {showSavePreset && (
+                    <div className="p-3 bg-muted rounded-lg flex gap-2 items-center">
+                      <span className="text-sm text-muted-foreground">Salvar como preset?</span>
+                      <Button size="sm" onClick={handleSavePreset}>
+                        Salvar
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setShowSavePreset(false)}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Model */}
+                  <div>
+                    <Label>Modelo</Label>
+                    <Select value={model} onValueChange={setModel}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ELEVENLABS_MODELS.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            <div>
+                              <span>{m.name}</span>
+                              <span className="text-xs text-muted-foreground ml-2">
+                                {m.description}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {/* Amazon Polly Config */}
+              {provider === 'aws-polly' && (
+                <div>
+                  <Label>Voz</Label>
+                  <Select value={pollyVoice} onValueChange={setPollyVoice}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {POLLY_VOICES.map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          <div>
+                            <span>{v.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {v.description}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Text */}
               <div>
