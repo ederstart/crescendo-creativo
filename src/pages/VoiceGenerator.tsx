@@ -145,16 +145,29 @@ export default function VoiceGenerator() {
       if (audioElement.src) {
         try {
           const response = await fetch(audioElement.src);
-          const audioBlob = await response.blob();
-          const modelUsed = provider === 'elevenlabs' ? model : `polly-${pollyVoice}`;
-          await saveGeneratedAudio(audioBlob, text, modelUsed, undefined, audioElement.duration || undefined);
-          refetchAudios();
+          if (response.ok) {
+            const audioBlob = await response.blob();
+            const modelUsed = provider === 'elevenlabs' ? model : `polly-${pollyVoice}`;
+            const savedAudio = await saveGeneratedAudio(audioBlob, text, modelUsed, undefined, audioElement.duration || undefined);
+            if (savedAudio) {
+              refetchAudios();
+              toast.success('Áudio gerado e salvo!');
+            } else {
+              toast.success('Áudio gerado!');
+            }
+          } else {
+            console.warn('Could not fetch audio blob:', response.status);
+            toast.success('Áudio gerado (não foi possível salvar no histórico)');
+          }
         } catch (saveError) {
           console.warn('Could not save audio to database:', saveError);
+          toast.success('Áudio gerado (não foi possível salvar no histórico)');
         }
+      } else {
+        toast.success('Áudio gerado!');
       }
 
-      toast.success('Áudio gerado com sucesso!');
+      
     } catch (error) {
       console.error('Error generating audio:', error);
       toast.error(`Erro ao gerar áudio com ${provider === 'elevenlabs' ? 'ElevenLabs' : 'Amazon Polly'}`);
@@ -426,6 +439,20 @@ export default function VoiceGenerator() {
                     <Download className="w-4 h-4 mr-2" />
                     Download
                   </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => {
+                      handlePause();
+                      setCurrentAudioUrl(null);
+                      audioRef.current = null;
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Limpar
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -433,8 +460,24 @@ export default function VoiceGenerator() {
 
           {/* Generated Audios History */}
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Histórico de Áudios</CardTitle>
+              {generatedAudios.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={async () => {
+                    if (!confirm(`Excluir todos os ${generatedAudios.length} áudios?`)) return;
+                    for (const audio of generatedAudios) {
+                      await deleteGeneratedAudio(audio.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Limpar Tudo
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {generatedAudios.length === 0 ? (
