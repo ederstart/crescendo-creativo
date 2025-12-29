@@ -3,6 +3,7 @@ declare global {
   const puter: {
     ai: {
       txt2speech: (text: string, options?: {
+        provider?: 'elevenlabs' | 'aws-polly';
         voice?: string;
         model?: string;
       }) => Promise<Blob>;
