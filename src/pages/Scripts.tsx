@@ -8,7 +8,8 @@ import {
   MoreVertical,
   Trash2,
   Edit,
-  X
+  X,
+  Copy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -92,6 +93,15 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
       setSelectedIds(new Set());
       fetchScripts();
     }
+  };
+
+  const copyScriptContent = (script: Script) => {
+    if (!script.content) {
+      toast.error('Roteiro sem conteúdo');
+      return;
+    }
+    navigator.clipboard.writeText(script.content);
+    toast.success('Roteiro copiado!');
   };
 
   const toggleSelection = (id: string) => {
@@ -200,6 +210,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
                           <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
                           <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                         </DropdownMenuContent>
