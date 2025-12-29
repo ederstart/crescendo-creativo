@@ -27,7 +27,9 @@ export function ScriptGenerator({
   onFavoriteModel,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen' | 'claude'>(
+    preferredModel as 'groq' | 'gemini' | 'qwen' | 'claude'
+  );
 
   // When template content is set, prepend it to the prompt
   useEffect(() => {
@@ -48,8 +50,8 @@ export function ScriptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen'].includes(preferredModel)) {
-      setModel(preferredModel as 'groq' | 'gemini' | 'qwen');
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'claude'].includes(preferredModel)) {
+      setModel(preferredModel as 'groq' | 'gemini' | 'qwen' | 'claude');
     }
   }, [preferredModel]);
 
@@ -76,6 +78,28 @@ export function ScriptGenerator({
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       toast.error('Digite um pedido');
+      return;
+    }
+
+    // Claude uses Puter.js (no API key needed)
+    if (model === 'claude') {
+      setLoading(true);
+      try {
+        const response = await puter.ai.chat(prompt, { model: 'claude-sonnet-4-5' });
+        let generatedText = '';
+        if (typeof response === 'string') {
+          generatedText = response;
+        } else if (response?.message?.content?.[0]?.text) {
+          generatedText = response.message.content[0].text;
+        }
+        onGenerated(generatedText, 'claude');
+        toast.success('Roteiro gerado com sucesso!');
+      } catch (error) {
+        console.error('Error generating with Claude:', error);
+        toast.error('Erro ao gerar com Claude');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -114,6 +138,7 @@ export function ScriptGenerator({
   const getApiKey = (m: string) => {
     if (m === 'groq') return groqApiKey;
     if (m === 'gemini') return geminiApiKey;
+    if (m === 'claude') return 'puter'; // Claude uses Puter.js
     return openrouterApiKey;
   };
 
@@ -137,11 +162,18 @@ export function ScriptGenerator({
             </Button>
           )}
         </div>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
+        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen' | 'claude')}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="claude">
+              <div className="flex items-center gap-2">
+                <span>Claude (Sonnet 4.5)</span>
+                {preferredModel === 'claude' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                <span className="text-xs text-green-500">- Grátis via Puter</span>
+              </div>
+            </SelectItem>
             <SelectItem value="groq">
               <div className="flex items-center gap-2">
                 <span>Groq (Llama 3.3 70B)</span>
