@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { useVoiceGenerator, VoicePreset, GeneratedAudio } from '@/hooks/useVoiceGenerator';
 import { useAuth } from '@/hooks/useAuth';
+import { loadPuter } from '@/lib/puter';
 
 const ELEVENLABS_MODELS = [
   { id: 'eleven_multilingual_v2', name: 'Multilingual V2 (Recomendado)', description: 'Melhor para múltiplos idiomas' },
@@ -90,7 +91,8 @@ export default function VoiceGenerator() {
 
     try {
       // Use Puter.js for ElevenLabs
-      const audioBlob = await puter.ai.txt2speech(text, {
+      const puterInstance = await loadPuter();
+      const audioBlob = await puterInstance.ai.txt2speech(text, {
         voice: voiceId,
         model: model,
       });

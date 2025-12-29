@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Sparkles, Upload, FileText, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { loadPuter } from '@/lib/puter';
 
 interface ScriptGeneratorProps {
   groqApiKey?: string;
@@ -85,7 +86,8 @@ export function ScriptGenerator({
     if (model === 'claude') {
       setLoading(true);
       try {
-        const response = await puter.ai.chat(prompt, { model: 'claude-sonnet-4-5' });
+        const puterInstance = await loadPuter();
+        const response = await puterInstance.ai.chat(prompt, { model: 'claude-sonnet-4-5' });
         let generatedText = '';
         if (typeof response === 'string') {
           generatedText = response;
