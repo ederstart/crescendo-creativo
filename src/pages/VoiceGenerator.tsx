@@ -32,16 +32,16 @@ const ELEVENLABS_MODELS = [
 
 // Amazon Polly voices (subset of popular ones)
 const POLLY_VOICES = [
-  { id: 'Camila', name: 'Camila', description: 'Português BR - Feminina' },
-  { id: 'Vitoria', name: 'Vitória', description: 'Português BR - Feminina' },
-  { id: 'Ricardo', name: 'Ricardo', description: 'Português BR - Masculina' },
-  { id: 'Thiago', name: 'Thiago', description: 'Português BR - Masculina' },
-  { id: 'Ines', name: 'Inês', description: 'Português PT - Feminina' },
-  { id: 'Cristiano', name: 'Cristiano', description: 'Português PT - Masculina' },
-  { id: 'Joanna', name: 'Joanna', description: 'English US - Female' },
-  { id: 'Matthew', name: 'Matthew', description: 'English US - Male' },
-  { id: 'Amy', name: 'Amy', description: 'English UK - Female' },
-  { id: 'Brian', name: 'Brian', description: 'English UK - Male' },
+  { id: 'Camila', name: 'Camila', description: 'Português BR - Feminina', language: 'pt-BR', engine: 'neural' as const },
+  { id: 'Vitoria', name: 'Vitória', description: 'Português BR - Feminina', language: 'pt-BR', engine: 'neural' as const },
+  { id: 'Ricardo', name: 'Ricardo', description: 'Português BR - Masculina', language: 'pt-BR', engine: 'standard' as const },
+  { id: 'Thiago', name: 'Thiago', description: 'Português BR - Masculina', language: 'pt-BR', engine: 'neural' as const },
+  { id: 'Ines', name: 'Inês', description: 'Português PT - Feminina', language: 'pt-PT', engine: 'neural' as const },
+  { id: 'Cristiano', name: 'Cristiano', description: 'Português PT - Masculina', language: 'pt-PT', engine: 'standard' as const },
+  { id: 'Joanna', name: 'Joanna', description: 'English US - Female', language: 'en-US', engine: 'neural' as const },
+  { id: 'Matthew', name: 'Matthew', description: 'English US - Male', language: 'en-US', engine: 'neural' as const },
+  { id: 'Amy', name: 'Amy', description: 'English UK - Female', language: 'en-GB', engine: 'neural' as const },
+  { id: 'Brian', name: 'Brian', description: 'English UK - Male', language: 'en-GB', engine: 'neural' as const },
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -109,27 +109,50 @@ export default function VoiceGenerator() {
     try {
       const puterInstance = await loadPuter();
       
-      // Use the appropriate provider
-      const audioBlob = await puterInstance.ai.txt2speech(text, {
-        provider: provider,
-        voice: provider === 'elevenlabs' ? voiceId : pollyVoice,
-        ...(provider === 'elevenlabs' && { model: model }),
-      });
+      let audioElement: HTMLAudioElement;
+      
+      if (provider === 'elevenlabs') {
+        // ElevenLabs - usa voice ID e model
+        audioElement = await puterInstance.ai.txt2speech(text, {
+          provider: 'elevenlabs',
+          voice: voiceId,
+          model: model,
+        });
+      } else {
+        // Amazon Polly - usa voice name, language e engine
+        const selectedVoice = POLLY_VOICES.find(v => v.id === pollyVoice);
+        audioElement = await puterInstance.ai.txt2speech(text, {
+          provider: 'aws-polly',
+          voice: pollyVoice,
+          language: selectedVoice?.language || 'pt-BR',
+          engine: selectedVoice?.engine || 'neural',
+        });
+      }
 
-      // Create URL for playback
-      const audioUrl = URL.createObjectURL(audioBlob);
-      setCurrentAudioUrl(audioUrl);
+      // O Puter.js retorna um HTMLAudioElement pronto para tocar
+      // Guardar referência e URL para o player
+      audioRef.current = audioElement;
+      setCurrentAudioUrl(audioElement.src);
+      
+      // Tocar automaticamente
+      audioElement.playbackRate = playbackSpeed;
+      audioElement.play();
+      setIsPlaying(true);
+      
+      audioElement.onended = () => setIsPlaying(false);
 
-      // Create audio element for duration
-      const tempAudio = new Audio(audioUrl);
-      tempAudio.onloadedmetadata = async () => {
-        const duration = tempAudio.duration;
-        
-        // Save to database
-        const modelUsed = provider === 'elevenlabs' ? model : `polly-${pollyVoice}`;
-        await saveGeneratedAudio(audioBlob, text, modelUsed, undefined, duration);
-        refetchAudios();
-      };
+      // Para salvar no banco, extrair o blob do src
+      if (audioElement.src) {
+        try {
+          const response = await fetch(audioElement.src);
+          const audioBlob = await response.blob();
+          const modelUsed = provider === 'elevenlabs' ? model : `polly-${pollyVoice}`;
+          await saveGeneratedAudio(audioBlob, text, modelUsed, undefined, audioElement.duration || undefined);
+          refetchAudios();
+        } catch (saveError) {
+          console.warn('Could not save audio to database:', saveError);
+        }
+      }
 
       toast.success('Áudio gerado com sucesso!');
     } catch (error) {
