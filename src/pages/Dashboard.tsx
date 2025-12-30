@@ -122,19 +122,19 @@ export default function Dashboard() {
                 AI Studio
               </Link>
             </Button>
-            <Button variant="outline" asChild className="h-12 border-primary/30 hover:bg-primary/10 hover:border-primary">
+            <Button variant="glass" asChild className="h-12">
               <Link to="/scripts/new">
                 <Plus className="w-4 h-4" />
                 Novo Roteiro
               </Link>
             </Button>
-            <Button variant="outline" asChild className="h-12 border-purple-500/30 hover:bg-purple-500/10 hover:border-purple-500 text-purple-400 hover:text-purple-300">
+            <Button variant="glass" asChild className="h-12">
               <Link to="/mood-boards/new">
                 <Image className="w-4 h-4" />
                 Mood Board
               </Link>
             </Button>
-            <Button variant="outline" asChild className="h-12 border-secondary/30 hover:bg-secondary/10 hover:border-secondary text-secondary hover:text-secondary">
+            <Button variant="glass" asChild className="h-12">
               <Link to="/ai-studio">
                 <Wand2 className="w-4 h-4" />
                 Gerar Cenas

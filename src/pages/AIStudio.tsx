@@ -38,6 +38,7 @@ export default function AIStudio() {
   const [selectedScenePrompt, setSelectedScenePrompt] = useState('');
   const [savingScript, setSavingScript] = useState(false);
   const [activeTab, setActiveTab] = useState('script');
+  const [imagePromptFromScene, setImagePromptFromScene] = useState('');
 
   useEffect(() => {
     if (generatedScript) {
@@ -67,6 +68,12 @@ export default function AIStudio() {
 
   const handleSceneTemplateSelect = (template: { content: string }) => {
     setSelectedScenePrompt(template.content);
+  };
+
+  const handleApplyPromptToImage = (prompt: string) => {
+    setImagePromptFromScene(prompt);
+    setActiveTab('images');
+    toast.success('Prompt aplicado! Configure e gere a imagem.');
   };
 
   const saveScriptToDatabase = async () => {
@@ -283,6 +290,7 @@ export default function AIStudio() {
                 preferredModel={settings?.preferred_model_scene || 'groq'}
                 onPromptsGenerated={() => {}}
                 onFavoriteModel={(model) => handleFavoriteModel('scene', model)}
+                onApplyPrompt={handleApplyPromptToImage}
               />
             </div>
           </div>
@@ -302,6 +310,8 @@ export default function AIStudio() {
                 await saveSettings({ style_template: template });
               }}
               onRefetch={refetchImages}
+              initialPrompt={imagePromptFromScene}
+              onPromptUsed={() => setImagePromptFromScene('')}
             />
           </div>
         </TabsContent>

@@ -3,15 +3,6 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
-export interface VoicePreset {
-  id: string;
-  voice_id: string;
-  voice_name: string;
-  description?: string;
-  is_favorite: boolean;
-  created_at: string;
-}
-
 export interface GeneratedAudio {
   id: string;
   voice_preset_id?: string;
@@ -24,34 +15,14 @@ export interface GeneratedAudio {
 
 export function useVoiceGenerator() {
   const { user } = useAuth();
-  const [voicePresets, setVoicePresets] = useState<VoicePreset[]>([]);
   const [generatedAudios, setGeneratedAudios] = useState<GeneratedAudio[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
-      fetchVoicePresets();
       fetchGeneratedAudios();
     }
   }, [user]);
-
-  const fetchVoicePresets = async () => {
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from('voice_presets')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('is_favorite', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching voice presets:', error);
-    } else {
-      setVoicePresets(data || []);
-    }
-    setLoading(false);
-  };
 
   const fetchGeneratedAudios = async () => {
     if (!user) return;
@@ -67,60 +38,7 @@ export function useVoiceGenerator() {
     } else {
       setGeneratedAudios(data || []);
     }
-  };
-
-  const saveVoicePreset = async (voiceId: string, voiceName: string, description?: string) => {
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from('voice_presets')
-      .insert({
-        user_id: user.id,
-        voice_id: voiceId,
-        voice_name: voiceName,
-        description,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      toast.error('Erro ao salvar voz');
-      console.error(error);
-    } else {
-      toast.success('Voz salva!');
-      setVoicePresets(prev => [data, ...prev]);
-      return data;
-    }
-  };
-
-  const deleteVoicePreset = async (id: string) => {
-    const { error } = await supabase
-      .from('voice_presets')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      toast.error('Erro ao excluir voz');
-      console.error(error);
-    } else {
-      toast.success('Voz excluída!');
-      setVoicePresets(prev => prev.filter(p => p.id !== id));
-    }
-  };
-
-  const toggleFavorite = async (id: string, isFavorite: boolean) => {
-    const { error } = await supabase
-      .from('voice_presets')
-      .update({ is_favorite: !isFavorite })
-      .eq('id', id);
-
-    if (error) {
-      toast.error('Erro ao atualizar voz');
-    } else {
-      setVoicePresets(prev => 
-        prev.map(p => p.id === id ? { ...p, is_favorite: !isFavorite } : p)
-      );
-    }
+    setLoading(false);
   };
 
   const saveGeneratedAudio = async (
@@ -188,12 +106,8 @@ export function useVoiceGenerator() {
   };
 
   return {
-    voicePresets,
     generatedAudios,
     loading,
-    saveVoicePreset,
-    deleteVoicePreset,
-    toggleFavorite,
     saveGeneratedAudio,
     deleteGeneratedAudio,
     refetchAudios: fetchGeneratedAudios,
