@@ -12,13 +12,10 @@ import {
   Download, 
   Trash2, 
   RefreshCw, 
-  Star, 
-  Plus,
   Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useVoiceGenerator, VoicePreset } from '@/hooks/useVoiceGenerator';
-import { useAuth } from '@/hooks/useAuth';
+import { useVoiceGenerator } from '@/hooks/useVoiceGenerator';
 import { supabase } from '@/lib/supabase';
 
 // Kokoro TTS voices - multiple languages
@@ -86,13 +83,8 @@ const LANGUAGE_LABELS: Record<string, string> = {
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 export default function VoiceGenerator() {
-  const { user } = useAuth();
   const { 
-    voicePresets, 
     generatedAudios, 
-    saveVoicePreset, 
-    deleteVoicePreset,
-    toggleFavorite,
     saveGeneratedAudio,
     deleteGeneratedAudio,
     refetchAudios,
@@ -121,20 +113,6 @@ export default function VoiceGenerator() {
       setVoiceId(voices[0].id);
     }
   }, [language, voiceId]);
-
-  const handleSelectPreset = (preset: VoicePreset) => {
-    setVoiceId(preset.voice_id);
-  };
-
-  const handleSavePreset = async () => {
-    if (!voiceId.trim()) {
-      toast.error('Selecione uma voz primeiro');
-      return;
-    }
-    const selectedVoice = KOKORO_VOICES[language]?.find(v => v.id === voiceId);
-    await saveVoicePreset(voiceId, selectedVoice?.name || voiceId, `Kokoro TTS - ${language}`);
-    toast.success('Voz salva!');
-  };
 
   const handleGenerate = async () => {
     if (!text.trim()) {
@@ -248,9 +226,9 @@ export default function VoiceGenerator() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Left Column - Generator */}
-        <div className="lg:col-span-2 space-y-4 md:space-y-6">
+        <div className="space-y-4 md:space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Configurações</CardTitle>
@@ -312,34 +290,24 @@ export default function VoiceGenerator() {
                 </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button 
-                  onClick={handleGenerate} 
-                  disabled={loading}
-                  variant="fire"
-                  className="flex-1"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Gerando...
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="w-4 h-4 mr-2" />
-                      Gerar Áudio
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleSavePreset}
-                  disabled={!voiceId}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Salvar Voz
-                </Button>
-              </div>
+              <Button 
+                onClick={handleGenerate} 
+                disabled={loading}
+                variant="fire"
+                className="w-full"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-4 h-4 mr-2" />
+                    Gerar Áudio
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
 
@@ -408,9 +376,11 @@ export default function VoiceGenerator() {
               </CardContent>
             </Card>
           )}
+        </div>
 
-          {/* Generated Audios History */}
-          <Card>
+        {/* Right Column - Audio History */}
+        <div>
+          <Card className="lg:sticky lg:top-8">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Histórico de Áudios</CardTitle>
               {generatedAudios.length > 0 && (
@@ -436,7 +406,7 @@ export default function VoiceGenerator() {
                   Nenhum áudio gerado ainda
                 </p>
               ) : (
-                <ScrollArea className="h-[300px]">
+                <ScrollArea className="h-[500px]">
                   <div className="space-y-3">
                     {generatedAudios.map((audio) => (
                       <div 
@@ -484,79 +454,6 @@ export default function VoiceGenerator() {
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Voice Presets */}
-        <div>
-          <Card className="lg:sticky lg:top-8">
-            <CardHeader>
-              <CardTitle>Vozes Salvas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {voicePresets.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhuma voz salva
-                </p>
-              ) : (
-                <ScrollArea className="h-[400px]">
-                  <div className="space-y-2">
-                    {voicePresets.map((preset) => (
-                      <div
-                        key={preset.id}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          voiceId === preset.voice_id 
-                            ? 'bg-primary/10 border border-primary/30' 
-                            : 'bg-muted hover:bg-muted/80'
-                        }`}
-                        onClick={() => handleSelectPreset(preset)}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">
-                              {preset.voice_name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {preset.description || preset.voice_id}
-                            </p>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(preset.id, preset.is_favorite);
-                              }}
-                            >
-                              <Star 
-                                className={`w-3 h-3 ${
-                                  preset.is_favorite 
-                                    ? 'fill-yellow-500 text-yellow-500' 
-                                    : 'text-muted-foreground'
-                                }`} 
-                              />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteVoicePreset(preset.id);
-                              }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
                         </div>
                       </div>
                     ))}

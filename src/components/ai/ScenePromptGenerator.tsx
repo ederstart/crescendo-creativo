@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Wand2, Copy, Check, Star, FileText } from 'lucide-react';
+import { Loader2, Wand2, Copy, Check, Star, FileText, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,13 +14,14 @@ import { useAuth } from '@/hooks/useAuth';
 interface ScenePrompt {
   number: number;
   prompt: string;
-  scriptExcerpt?: string; // Extracted from script by the app
+  scriptExcerpt?: string;
 }
 
 interface Script {
   id: string;
   title: string;
   content: string;
+  status?: string;
 }
 
 interface ScenePromptGeneratorProps {
@@ -31,6 +32,7 @@ interface ScenePromptGeneratorProps {
   preferredModel?: string;
   onPromptsGenerated: (prompts: ScenePrompt[]) => void;
   onFavoriteModel?: (model: string) => void;
+  onApplyPrompt?: (prompt: string) => void;
 }
 
 const BATCH_SIZE = 30;
@@ -40,6 +42,7 @@ export function ScenePromptGenerator({
   preferredModel = 'groq',
   onPromptsGenerated,
   onFavoriteModel,
+  onApplyPrompt,
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
   const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
@@ -60,6 +63,7 @@ export function ScenePromptGenerator({
   const [scripts, setScripts] = useState<Script[]>([]);
   const [selectedScriptId, setSelectedScriptId] = useState<string>('');
   const [loadingScripts, setLoadingScripts] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Update model when preferredModel changes
   useEffect(() => {
@@ -73,15 +77,22 @@ export function ScenePromptGenerator({
     if (user) {
       fetchScripts();
     }
-  }, [user]);
+  }, [user, showCompleted]);
 
   const fetchScripts = async () => {
     setLoadingScripts(true);
-    const { data, error } = await supabase
+    
+    let query = supabase
       .from('scripts')
-      .select('id, title, content')
+      .select('id, title, content, status')
       .eq('user_id', user?.id)
       .order('updated_at', { ascending: false });
+    
+    if (!showCompleted) {
+      query = query.neq('status', 'completed');
+    }
+    
+    const { data, error } = await query;
 
     if (!error && data) {
       setScripts(data.filter(s => s.content && s.content.trim()));
@@ -101,7 +112,6 @@ export function ScenePromptGenerator({
   const divideScriptIntoParts = (content: string, numParts: number): string[] => {
     if (numParts <= 1) return [content];
     
-    // Split by paragraphs first to avoid cutting mid-sentence
     const paragraphs = content.split(/\n\n+/);
     const totalLength = content.length;
     const targetPartLength = Math.ceil(totalLength / numParts);
@@ -121,7 +131,6 @@ export function ScenePromptGenerator({
       }
     }
     
-    // Add the last part
     if (currentPart.trim()) {
       parts.push(currentPart.trim());
     }
@@ -129,13 +138,12 @@ export function ScenePromptGenerator({
     return parts;
   };
 
-  // Extract script excerpts for each scene (divides script proportionally)
+  // Extract script excerpts for each scene
   const extractScriptExcerpts = (content: string, numScenes: number): string[] => {
     const paragraphs = content.split(/\n+/).filter(p => p.trim());
     const excerpts: string[] = [];
     
     if (paragraphs.length >= numScenes) {
-      // More paragraphs than scenes - group them
       const paragraphsPerScene = Math.ceil(paragraphs.length / numScenes);
       for (let i = 0; i < numScenes; i++) {
         const start = i * paragraphsPerScene;
@@ -144,7 +152,6 @@ export function ScenePromptGenerator({
         excerpts.push(excerpt.length > 100 ? excerpt.substring(0, 100) + '...' : excerpt);
       }
     } else {
-      // Fewer paragraphs than scenes - divide by character count
       const charsPerScene = Math.ceil(content.length / numScenes);
       for (let i = 0; i < numScenes; i++) {
         const start = i * charsPerScene;
@@ -173,9 +180,7 @@ export function ScenePromptGenerator({
         ? Math.ceil(scriptContent.length / charactersPerScene)
         : numberOfScenes;
 
-      // Determine if we need batch processing
       if (targetScenes <= BATCH_SIZE) {
-        // Single request for small amounts
         const { data, error } = await supabase.functions.invoke('generate-scene-prompts', {
           body: {
             scriptContent,
@@ -190,7 +195,6 @@ export function ScenePromptGenerator({
         if (error) throw error;
         if (data.error) throw new Error(data.error);
 
-        // Add script excerpts to each scene (extracted by the app, not the AI)
         const excerpts = extractScriptExcerpts(scriptContent, data.scenes.length);
         const scenesWithExcerpts = data.scenes.map((scene: ScenePrompt, idx: number) => ({
           ...scene,
@@ -201,11 +205,9 @@ export function ScenePromptGenerator({
         onPromptsGenerated(scenesWithExcerpts);
         toast.success(`${scenesWithExcerpts.length} prompts de cenas gerados!`);
       } else {
-        // Batch processing for large amounts
         const numBatches = Math.ceil(targetScenes / BATCH_SIZE);
         setTotalBatches(numBatches);
         
-        // Divide script into parts
         const scriptParts = divideScriptIntoParts(scriptContent, numBatches);
         
         const allScenes: ScenePrompt[] = [];
@@ -234,10 +236,8 @@ export function ScenePromptGenerator({
           if (error) throw error;
           if (data.error) throw new Error(data.error);
 
-          // Add script excerpts for this batch
           const batchExcerpts = extractScriptExcerpts(scriptParts[i], data.scenes.length);
           
-          // Renumber scenes with correct offset and add excerpts
           const renumberedScenes = data.scenes.map((scene: ScenePrompt, idx: number) => ({
             ...scene,
             number: sceneNumberOffset + idx + 1,
@@ -247,12 +247,10 @@ export function ScenePromptGenerator({
           sceneNumberOffset += data.scenes.length;
           allScenes.push(...renumberedScenes);
           
-          // Update UI progressively
           setGeneratedPrompts([...allScenes]);
           
-          // Longer delay between batches to avoid rate limiting
           if (i < scriptParts.length - 1) {
-            toast.info(`Aguardando 5 segundos antes do próximo lote para evitar rate limiting...`);
+            toast.info(`Aguardando 5 segundos antes do próximo lote...`);
             await new Promise(resolve => setTimeout(resolve, 5000));
           }
         }
@@ -291,7 +289,27 @@ export function ScenePromptGenerator({
     <div className="space-y-4">
       {/* Script Selection */}
       <div>
-        <Label>Selecionar Roteiro</Label>
+        <div className="flex items-center justify-between mb-1">
+          <Label>Selecionar Roteiro</Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowCompleted(!showCompleted)}
+            className="text-muted-foreground"
+          >
+            {showCompleted ? (
+              <>
+                <EyeOff className="w-4 h-4 mr-2" />
+                Ocultar Concluídos
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4 mr-2" />
+                Exibir Todos
+              </>
+            )}
+          </Button>
+        </div>
         <Select value={selectedScriptId} onValueChange={setSelectedScriptId}>
           <SelectTrigger className="mt-1">
             <SelectValue placeholder={loadingScripts ? "Carregando..." : "Escolha um roteiro salvo"} />
@@ -299,7 +317,7 @@ export function ScenePromptGenerator({
           <SelectContent>
             {scripts.length === 0 ? (
               <SelectItem value="none" disabled>
-                Nenhum roteiro salvo
+                {showCompleted ? 'Nenhum roteiro salvo' : 'Nenhum roteiro em progresso'}
               </SelectItem>
             ) : (
               scripts.map((script) => (
@@ -503,18 +521,32 @@ export function ScenePromptGenerator({
                       {scene.prompt}
                     </p>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 shrink-0"
-                    onClick={() => copyPrompt(scene.prompt, index)}
-                  >
-                    {copiedIndex === index ? (
-                      <Check className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => copyPrompt(scene.prompt, index)}
+                      title="Copiar prompt"
+                    >
+                      {copiedIndex === index ? (
+                        <Check className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </Button>
+                    {onApplyPrompt && (
+                      <Button
+                        size="icon"
+                        variant="fire"
+                        className="h-8 w-8 shrink-0"
+                        onClick={() => onApplyPrompt(scene.prompt)}
+                        title="Aplicar na geração de imagem"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </div>
               </div>
             ))}
