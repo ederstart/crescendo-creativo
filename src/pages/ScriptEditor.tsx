@@ -8,7 +8,8 @@ import {
   Trash2,
   ExternalLink,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -179,6 +180,15 @@ export default function ScriptEditor() {
     toast.success('Salvo!');
   };
 
+  const handleAutomation = () => {
+    if (!script.id || !script.content) {
+      toast.error('Salve o roteiro primeiro para automatizar');
+      return;
+    }
+    navigate(`/ai-studio?automate=true&scriptId=${script.id}`);
+    toast.info('Iniciando automação...');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -198,12 +208,12 @@ export default function ScriptEditor() {
                 <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
-            <div>
+            <div className="flex-1 min-w-0">
               <Input
                 value={script.title}
                 onChange={(e) => setScript({ ...script, title: e.target.value })}
                 placeholder="Título do roteiro..."
-                className="text-xl font-display font-bold bg-transparent border-none p-0 h-auto focus-visible:ring-0"
+                className="text-xl font-display font-bold bg-transparent border-none p-0 h-auto focus-visible:ring-0 w-full"
               />
               {lastSaved && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -247,6 +257,10 @@ export default function ScriptEditor() {
             <Button variant="fire" onClick={handleManualSave}>
               <Save className="w-4 h-4" />
               Salvar
+            </Button>
+            <Button variant="secondary" onClick={handleAutomation} disabled={!script.id || !script.content}>
+              <Zap className="w-4 h-4" />
+              Automatizar
             </Button>
           </div>
         </div>
