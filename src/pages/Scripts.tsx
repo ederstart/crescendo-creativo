@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,6 +26,7 @@ interface ScriptsProps {
 }
 
 export default function Scripts({ selectionMode = false, onSelectionChange }: ScriptsProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [scripts, setScripts] = useState<Script[]>([]);
   const [search, setSearch] = useState('');
@@ -66,6 +67,15 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
     if (!script.content) { toast.error('Roteiro sem conteúdo'); return; }
     navigator.clipboard.writeText(script.content);
     toast.success('Roteiro copiado!');
+  };
+
+  const handleAutomation = (script: Script) => {
+    if (!script.content) {
+      toast.error('Roteiro sem conteúdo para automatizar');
+      return;
+    }
+    navigate(`/ai-studio?automate=true&scriptId=${script.id}`);
+    toast.info('Iniciando automação... Aguarde.');
   };
 
   const toggleSelection = (id: string) => {
@@ -174,6 +184,8 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
                           <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

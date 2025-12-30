@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Wand2, Copy, Check, Star, FileText, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Loader2, Wand2, Copy, Check, Star, FileText, Eye, EyeOff, Sparkles, Images } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,6 +24,8 @@ interface Script {
   status?: string;
 }
 
+type AIModel = 'groq' | 'gemini' | 'qwen' | 'mimo' | 'deepseek' | 'llama';
+
 interface ScenePromptGeneratorProps {
   groqApiKey?: string;
   geminiApiKey?: string;
@@ -33,6 +35,7 @@ interface ScenePromptGeneratorProps {
   onPromptsGenerated: (prompts: ScenePrompt[]) => void;
   onFavoriteModel?: (model: string) => void;
   onApplyPrompt?: (prompt: string) => void;
+  onApplyAllPrompts?: (prompts: string[]) => void;
 }
 
 const BATCH_SIZE = 30;
@@ -43,12 +46,13 @@ export function ScenePromptGenerator({
   onPromptsGenerated,
   onFavoriteModel,
   onApplyPrompt,
+  onApplyAllPrompts,
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
+  const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
   const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('scenes');
   const [numberOfScenes, setNumberOfScenes] = useState(5);
-  const [charactersPerScene, setCharactersPerScene] = useState(500);
+  const [charactersPerScene, setCharactersPerScene] = useState(130); // Changed default to 130
   const [stylePrompt, setStylePrompt] = useState(defaultStylePrompt);
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
@@ -67,8 +71,8 @@ export function ScenePromptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen'].includes(preferredModel)) {
-      setModel(preferredModel as 'groq' | 'gemini' | 'qwen');
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'mimo', 'deepseek', 'llama'].includes(preferredModel)) {
+      setModel(preferredModel as AIModel);
     }
   }, [preferredModel]);
 
@@ -283,6 +287,16 @@ export function ScenePromptGenerator({
     toast.success('Todos os prompts copiados!');
   };
 
+  const handleApplyAllPrompts = () => {
+    if (generatedPrompts.length === 0) {
+      toast.error('Nenhum prompt para aplicar');
+      return;
+    }
+    const allPrompts = generatedPrompts.map(p => `Cena ${p.number}: ${p.prompt}`);
+    onApplyAllPrompts?.(allPrompts);
+    toast.success(`${allPrompts.length} prompts prontos para gerar imagens!`);
+  };
+
   const isFavorite = model === preferredModel;
 
   return (
@@ -364,7 +378,7 @@ export function ScenePromptGenerator({
             </Button>
           )}
         </div>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
+        <Select value={model} onValueChange={(v) => setModel(v as AIModel)}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -385,6 +399,24 @@ export function ScenePromptGenerator({
               <div className="flex items-center gap-2">
                 <span>Qwen3 (OpenRouter)</span>
                 {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="mimo">
+              <div className="flex items-center gap-2">
+                <span>MiMo-V2 Flash (OpenRouter)</span>
+                {preferredModel === 'mimo' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="deepseek">
+              <div className="flex items-center gap-2">
+                <span>DeepSeek R1 (OpenRouter)</span>
+                {preferredModel === 'deepseek' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+              </div>
+            </SelectItem>
+            <SelectItem value="llama">
+              <div className="flex items-center gap-2">
+                <span>Llama 3.3 70B (OpenRouter)</span>
+                {preferredModel === 'llama' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
               </div>
             </SelectItem>
           </SelectContent>
@@ -433,9 +465,9 @@ export function ScenePromptGenerator({
             type="number"
             min={100}
             max={5000}
-            step={100}
+            step={10}
             value={charactersPerScene}
-            onChange={(e) => setCharactersPerScene(parseInt(e.target.value) || 500)}
+            onChange={(e) => setCharactersPerScene(parseInt(e.target.value) || 130)}
             className="mt-1"
           />
           {scriptContent && (
@@ -496,12 +528,20 @@ export function ScenePromptGenerator({
 
       {generatedPrompts.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h4 className="font-medium text-foreground">Prompts Gerados ({generatedPrompts.length})</h4>
-            <Button size="sm" variant="secondary" onClick={copyAllPrompts}>
-              <Copy className="w-4 h-4 mr-2" />
-              Copiar Todos
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={copyAllPrompts}>
+                <Copy className="w-4 h-4 mr-2" />
+                Copiar Todos
+              </Button>
+              {onApplyAllPrompts && (
+                <Button size="sm" variant="fire" onClick={handleApplyAllPrompts}>
+                  <Images className="w-4 h-4 mr-2" />
+                  Gerar Todas Imagens
+                </Button>
+              )}
+            </div>
           </div>
           
           <div className="space-y-2 max-h-96 overflow-y-auto">
