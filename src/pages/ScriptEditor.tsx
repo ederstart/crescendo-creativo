@@ -200,7 +200,7 @@ export default function ScriptEditor() {
   return (
     <div className="min-h-screen animate-fade-in">
       {/* Header */}
-      <header className="sticky top-0 z-10 glass border-b border-border">
+      <header className="sticky top-0 z-10 glass border-b border-border pt-4">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild>
@@ -290,6 +290,9 @@ Conteúdo principal do vídeo...
 Call to action e despedida..."
             className="min-h-[calc(100vh-200px)] bg-card border-border text-foreground resize-none text-base leading-relaxed font-sans"
           />
+          <p className="text-xs text-muted-foreground mt-2">
+            {script.content.length.toLocaleString('pt-BR')} caracteres
+          </p>
         </div>
 
         {/* References Sidebar */}
