@@ -190,7 +190,11 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <Link to={`/scripts/${script.id}`}><h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors line-clamp-1">{script.title}</h3></Link>
+                    <Link to={`/scripts/${script.id}`} className="block group/title">
+                      <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors overflow-hidden">
+                        <span className="block whitespace-nowrap group-hover/title:animate-marquee">{script.title}</span>
+                      </h3>
+                    </Link>
                     <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{script.content || 'Sem conteúdo ainda...'}</p>
                     <div className="flex items-center justify-between">{getStatusBadge(script.status)}<span className="text-xs text-muted-foreground">{new Date(script.updated_at).toLocaleDateString('pt-BR')}</span></div>
                   </div>
