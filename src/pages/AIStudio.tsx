@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Layers } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2 } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -14,7 +14,7 @@ import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
 import { toast } from 'sonner';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -23,6 +23,7 @@ const SCRIPT_TITLE_STORAGE_KEY = 'ai_studio_script_title';
 
 export default function AIStudio() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
@@ -39,6 +40,20 @@ export default function AIStudio() {
   const [savingScript, setSavingScript] = useState(false);
   const [activeTab, setActiveTab] = useState('script');
   const [imagePromptFromScene, setImagePromptFromScene] = useState('');
+  const [batchPromptsForImages, setBatchPromptsForImages] = useState('');
+
+  // Read URL params for title (from Script Ideas)
+  useEffect(() => {
+    const titleFromUrl = searchParams.get('title');
+    if (titleFromUrl) {
+      setScriptTitle(titleFromUrl);
+      setSelectedScriptPrompt(`Crie um roteiro completo para um vídeo com o tema: ${titleFromUrl}`);
+      // Clear the param after reading
+      searchParams.delete('title');
+      setSearchParams(searchParams, { replace: true });
+      toast.info(`Criando roteiro: "${titleFromUrl}"`);
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (generatedScript) {
@@ -61,6 +76,15 @@ export default function AIStudio() {
     toast.success('Roteiro copiado!');
   };
 
+  const clearScript = () => {
+    if (!confirm('Limpar o roteiro gerado?')) return;
+    setGeneratedScript('');
+    setScriptTitle('');
+    localStorage.removeItem(SCRIPT_STORAGE_KEY);
+    localStorage.removeItem(SCRIPT_TITLE_STORAGE_KEY);
+    toast.success('Roteiro limpo');
+  };
+
   const handleTemplateSelect = (template: { content: string }) => {
     setSelectedScriptPrompt(template.content);
     toast.success('Template carregado! Complete seu pedido abaixo.');
@@ -74,6 +98,12 @@ export default function AIStudio() {
     setImagePromptFromScene(prompt);
     setActiveTab('images');
     toast.success('Prompt aplicado! Configure e gere a imagem.');
+  };
+
+  const handleApplyAllPromptsToImages = (prompts: string[]) => {
+    setBatchPromptsForImages(prompts.join('\n'));
+    setActiveTab('images');
+    toast.success(`${prompts.length} prompts prontos! Clique em "Gerar Todas" para criar as imagens.`);
   };
 
   const saveScriptToDatabase = async () => {
@@ -207,10 +237,16 @@ export default function AIStudio() {
               <div className="flex flex-col gap-4 mb-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-foreground">Roteiro Gerado</h3>
-                  <Button variant="secondary" size="sm" onClick={copyScript}>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copiar
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={copyScript}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copiar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={clearScript} className="text-destructive hover:text-destructive">
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Limpar
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="flex items-end gap-4">
@@ -291,6 +327,7 @@ export default function AIStudio() {
                 onPromptsGenerated={() => {}}
                 onFavoriteModel={(model) => handleFavoriteModel('scene', model)}
                 onApplyPrompt={handleApplyPromptToImage}
+                onApplyAllPrompts={handleApplyAllPromptsToImages}
               />
             </div>
           </div>
@@ -312,6 +349,8 @@ export default function AIStudio() {
               onRefetch={refetchImages}
               initialPrompt={imagePromptFromScene}
               onPromptUsed={() => setImagePromptFromScene('')}
+              initialBatchPrompts={batchPromptsForImages}
+              onBatchPromptsUsed={() => setBatchPromptsForImages('')}
             />
           </div>
         </TabsContent>

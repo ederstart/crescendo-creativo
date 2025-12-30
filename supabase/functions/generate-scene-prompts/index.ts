@@ -65,13 +65,20 @@ serve(async (req) => {
       apiKey = settings.groq_api_key;
     } else if (model === 'gemini') {
       apiKey = settings.gemini_api_key;
-    } else if (model === 'qwen') {
+    } else if (['qwen', 'mimo', 'deepseek', 'llama'].includes(model)) {
       apiKey = settings.openrouter_api_key;
     }
 
     if (!apiKey) {
-      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
-      throw new Error(`API key for ${modelName} not configured. Please add it in Settings.`);
+      const modelNames: Record<string, string> = {
+        groq: 'Groq',
+        gemini: 'Gemini',
+        qwen: 'OpenRouter (Qwen)',
+        mimo: 'OpenRouter (MiMo)',
+        deepseek: 'OpenRouter (DeepSeek)',
+        llama: 'OpenRouter (Llama)',
+      };
+      throw new Error(`API key for ${modelNames[model] || model} not configured. Please add it in Settings.`);
     }
 
     // Determine scene count for this batch
@@ -146,7 +153,7 @@ Response format (VALID JSON ONLY):
       generatedText = data.choices[0].message.content;
 
     } else if (model === 'gemini') {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`, {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +180,17 @@ Response format (VALID JSON ONLY):
       const data = await response.json();
       generatedText = data.candidates[0].content.parts[0].text;
 
-    } else if (model === 'qwen') {
+    } else if (['qwen', 'mimo', 'deepseek', 'llama'].includes(model)) {
+      // OpenRouter models mapping
+      const openRouterModels: Record<string, string> = {
+        qwen: 'qwen/qwen3-coder:free',
+        mimo: 'xiaomi/mimo-v2-flash:free',
+        deepseek: 'deepseek/deepseek-r1-0528:free',
+        llama: 'meta-llama/llama-3.3-70b-instruct:free',
+      };
+
+      const openRouterModel = openRouterModels[model];
+
       // Retry logic for rate limiting
       const MAX_RETRIES = 3;
       const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s
@@ -187,7 +204,7 @@ Response format (VALID JSON ONLY):
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'qwen/qwen3-coder:free',
+            model: openRouterModel,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
@@ -212,15 +229,15 @@ Response format (VALID JSON ONLY):
           continue;
         }
         
-        console.error('OpenRouter API error:', lastError);
-        throw new Error(`OpenRouter API error: ${response.status}${response.status === 429 ? ' - Rate limit exceeded after retries' : ''}`);
+        console.error(`OpenRouter ${model} API error:`, lastError);
+        throw new Error(`OpenRouter ${model} API error: ${response.status}${response.status === 429 ? ' - Rate limit exceeded after retries' : ''}`);
       }
       
       if (!generatedText) {
-        throw new Error('Failed to get response from OpenRouter after retries');
+        throw new Error(`Failed to get response from OpenRouter (${model}) after retries`);
       }
     } else {
-      throw new Error('Invalid model specified');
+      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "mimo", "deepseek", or "llama".');
     }
 
     // Parse the JSON response - improved parsing

@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import { 
   Volume2, 
   Play, 
@@ -16,10 +17,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useVoiceGenerator } from '@/hooks/useVoiceGenerator';
-import { supabase } from '@/lib/supabase';
+import { generateSpeech, isModelLoaded, isModelLoading, getLoadProgress, type TTSVoice } from '@/lib/kokoroTTS';
 
 // Kokoro TTS voices - multiple languages
-const KOKORO_VOICES: Record<string, { id: string; name: string; gender: 'male' | 'female'; quality?: string }[]> = {
+const KOKORO_VOICES: Record<string, { id: TTSVoice; name: string; gender: 'male' | 'female'; quality?: string }[]> = {
   'pt-BR': [
     { id: 'pm_santa', name: 'Santa', gender: 'male', quality: 'A' },
     { id: 'pf_dora', name: 'Dora', gender: 'female', quality: 'A' },
@@ -92,8 +93,9 @@ export default function VoiceGenerator() {
 
   const [text, setText] = useState('');
   const [language, setLanguage] = useState('pt-BR');
-  const [voiceId, setVoiceId] = useState('pm_santa');
+  const [voiceId, setVoiceId] = useState<TTSVoice>('pm_santa');
   const [loading, setLoading] = useState(false);
+  const [modelLoadProgress, setModelLoadProgress] = useState(0);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -114,6 +116,19 @@ export default function VoiceGenerator() {
     }
   }, [language, voiceId]);
 
+  // Check model loading status periodically
+  useEffect(() => {
+    if (isModelLoading()) {
+      const interval = setInterval(() => {
+        setModelLoadProgress(getLoadProgress());
+        if (!isModelLoading()) {
+          clearInterval(interval);
+        }
+      }, 100);
+      return () => clearInterval(interval);
+    }
+  }, [loading]);
+
   const handleGenerate = async () => {
     if (!text.trim()) {
       toast.error('Digite o texto para gerar áudio');
@@ -121,20 +136,20 @@ export default function VoiceGenerator() {
     }
 
     setLoading(true);
+    setModelLoadProgress(0);
 
     try {
-      const { data, error } = await supabase.functions.invoke('kokoro-tts', {
-        body: {
-          text,
-          voice: voiceId,
-          speed: playbackSpeed,
-        },
+      // Show loading message for first time (model download)
+      if (!isModelLoaded()) {
+        toast.info('Carregando modelo de voz (~80MB)... Isso só acontece uma vez!');
+      }
+
+      const audioBlob = await generateSpeech(text, {
+        voice: voiceId,
+        speed: playbackSpeed,
+        onProgress: setModelLoadProgress,
       });
-
-      if (error) throw error;
-
-      // The response is already a blob from the edge function
-      const audioBlob = new Blob([data], { type: 'audio/mpeg' });
+      
       const audioUrl = URL.createObjectURL(audioBlob);
       
       // Create audio element and play
@@ -163,7 +178,7 @@ export default function VoiceGenerator() {
         console.warn('Could not save audio:', saveError);
       }
       
-      toast.success('Áudio gerado!');
+      toast.success('Áudio gerado localmente!');
     } catch (error) {
       console.error('Error generating audio:', error);
       toast.error('Erro ao gerar áudio. Tente novamente.');
@@ -203,7 +218,7 @@ export default function VoiceGenerator() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename || 'audio.mp3';
+    a.download = filename || 'audio.wav';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -221,7 +236,7 @@ export default function VoiceGenerator() {
             Gerador de Voz
           </h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            Kokoro TTS - 100% gratuito e ilimitado
+            Kokoro TTS - 100% local, gratuito e ilimitado
           </p>
         </div>
       </div>
@@ -254,7 +269,7 @@ export default function VoiceGenerator() {
 
                 <div>
                   <Label>Voz</Label>
-                  <Select value={voiceId} onValueChange={setVoiceId}>
+                  <Select value={voiceId} onValueChange={(v) => setVoiceId(v as TTSVoice)}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
@@ -290,6 +305,20 @@ export default function VoiceGenerator() {
                 </p>
               </div>
 
+              {/* Model loading progress */}
+              {loading && !isModelLoaded() && modelLoadProgress > 0 && modelLoadProgress < 100 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Carregando modelo de voz...</span>
+                    <span>{modelLoadProgress}%</span>
+                  </div>
+                  <Progress value={modelLoadProgress} className="h-2" />
+                  <p className="text-xs text-muted-foreground">
+                    O modelo será salvo em cache para uso futuro
+                  </p>
+                </div>
+              )}
+
               <Button 
                 onClick={handleGenerate} 
                 disabled={loading}
@@ -299,15 +328,21 @@ export default function VoiceGenerator() {
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Gerando...
+                    {isModelLoaded() ? 'Gerando...' : 'Carregando modelo...'}
                   </>
                 ) : (
                   <>
                     <Volume2 className="w-4 h-4 mr-2" />
-                    Gerar Áudio
+                    Gerar Áudio (Local)
                   </>
                 )}
               </Button>
+
+              {!isModelLoaded() && !loading && (
+                <p className="text-xs text-muted-foreground text-center">
+                  ⚡ Primeira geração baixa o modelo (~80MB). Depois é instantâneo!
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -353,7 +388,7 @@ export default function VoiceGenerator() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleDownload(currentAudioUrl, 'audio-gerado.mp3')}
+                    onClick={() => handleDownload(currentAudioUrl, 'audio-gerado.wav')}
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Download

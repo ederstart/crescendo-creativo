@@ -31,6 +31,8 @@ interface ImageGalleryProps {
   onRefetch?: () => void;
   initialPrompt?: string;
   onPromptUsed?: () => void;
+  initialBatchPrompts?: string;
+  onBatchPromptsUsed?: () => void;
 }
 
 // Helper function to clean "Cena X:" prefix from prompts
@@ -53,6 +55,8 @@ export function ImageGallery({
   onRefetch,
   initialPrompt,
   onPromptUsed,
+  initialBatchPrompts,
+  onBatchPromptsUsed,
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
