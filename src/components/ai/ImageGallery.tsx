@@ -29,6 +29,8 @@ interface ImageGalleryProps {
   onDeleteMultiple: (ids: string[]) => void;
   onSaveStyleTemplate: (template: string) => void;
   onRefetch?: () => void;
+  initialPrompt?: string;
+  onPromptUsed?: () => void;
 }
 
 // Helper function to clean "Cena X:" prefix from prompts
@@ -49,6 +51,8 @@ export function ImageGallery({
   onDeleteMultiple,
   onSaveStyleTemplate,
   onRefetch,
+  initialPrompt,
+  onPromptUsed,
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
@@ -75,6 +79,13 @@ export function ImageGallery({
     }
   }, [initialStyleTemplate]);
 
+  // Apply initial prompt when received from scene generator
+  useEffect(() => {
+    if (initialPrompt && initialPrompt.trim()) {
+      setPrompt(initialPrompt);
+      onPromptUsed?.();
+    }
+  }, [initialPrompt, onPromptUsed]);
   const saveStyleTemplate = async () => {
     setSavingStyle(true);
     await onSaveStyleTemplate(styleTemplate);

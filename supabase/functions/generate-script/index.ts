@@ -57,8 +57,8 @@ serve(async (req) => {
       generatedText = data.choices[0].message.content;
 
     } else if (model === 'gemini') {
-      // Gemini API - 2.5 Flash
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`, {
+      // Gemini API - 2.5 Flash (stable, free tier)
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,7 +70,7 @@ serve(async (req) => {
             }]
           }],
           generationConfig: {
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
           }
         }),
       });
