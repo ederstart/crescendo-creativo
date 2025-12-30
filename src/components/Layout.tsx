@@ -1,10 +1,13 @@
 import { Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useSidebarState } from '@/hooks/useSidebarState';
 import { Sidebar } from './Sidebar';
 import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export function Layout() {
   const { user, loading } = useAuth();
+  const { collapsed } = useSidebarState();
 
   if (loading) {
     return (
@@ -21,7 +24,10 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="ml-64 min-h-screen">
+      <main className={cn(
+        "min-h-screen transition-all duration-300",
+        collapsed ? "ml-16" : "ml-64"
+      )}>
         <Outlet />
       </main>
     </div>

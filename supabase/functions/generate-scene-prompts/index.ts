@@ -65,7 +65,7 @@ serve(async (req) => {
       apiKey = settings.groq_api_key;
     } else if (model === 'gemini') {
       apiKey = settings.gemini_api_key;
-    } else if (['qwen', 'mimo', 'deepseek', 'llama'].includes(model)) {
+    } else if (['qwen', 'deepseek', 'llama'].includes(model)) {
       apiKey = settings.openrouter_api_key;
     }
 
@@ -74,7 +74,6 @@ serve(async (req) => {
         groq: 'Groq',
         gemini: 'Gemini',
         qwen: 'OpenRouter (Qwen)',
-        mimo: 'OpenRouter (MiMo)',
         deepseek: 'OpenRouter (DeepSeek)',
         llama: 'OpenRouter (Llama)',
       };
@@ -180,11 +179,10 @@ Response format (VALID JSON ONLY):
       const data = await response.json();
       generatedText = data.candidates[0].content.parts[0].text;
 
-    } else if (['qwen', 'mimo', 'deepseek', 'llama'].includes(model)) {
+    } else if (['qwen', 'deepseek', 'llama'].includes(model)) {
       // OpenRouter models mapping
       const openRouterModels: Record<string, string> = {
         qwen: 'qwen/qwen3-coder:free',
-        mimo: 'xiaomi/mimo-v2-flash:free',
         deepseek: 'deepseek/deepseek-r1-0528:free',
         llama: 'meta-llama/llama-3.3-70b-instruct:free',
       };
@@ -237,7 +235,7 @@ Response format (VALID JSON ONLY):
         throw new Error(`Failed to get response from OpenRouter (${model}) after retries`);
       }
     } else {
-      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "mimo", "deepseek", or "llama".');
+      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "deepseek", or "llama".');
     }
 
     // Parse the JSON response - improved parsing

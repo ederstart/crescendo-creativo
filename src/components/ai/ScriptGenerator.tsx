@@ -7,7 +7,7 @@ import { Loader2, Sparkles, Upload, FileText, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
-type ModelType = 'groq' | 'gemini' | 'qwen' | 'mimo' | 'deepseek' | 'llama';
+type ModelType = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
 
 interface ScriptGeneratorProps {
   groqApiKey?: string;
@@ -24,13 +24,13 @@ export function ScriptGenerator({
   geminiApiKey,
   openrouterApiKey,
   templateContent = '',
-  preferredModel = 'mimo',
+  preferredModel = 'deepseek',
   onGenerated,
   onFavoriteModel,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<ModelType>(
-    (preferredModel as ModelType) || 'mimo'
+    (preferredModel as ModelType) || 'deepseek'
   );
 
   // When template content is set, prepend it to the prompt
@@ -52,7 +52,7 @@ export function ScriptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen', 'mimo', 'deepseek', 'llama'].includes(preferredModel)) {
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
       setModel(preferredModel as ModelType);
     }
   }, [preferredModel]);
@@ -90,7 +90,6 @@ export function ScriptGenerator({
         groq: 'Groq',
         gemini: 'Gemini',
         qwen: 'OpenRouter',
-        mimo: 'OpenRouter',
         deepseek: 'OpenRouter',
         llama: 'OpenRouter',
       };
@@ -127,7 +126,7 @@ export function ScriptGenerator({
     if (m === 'groq') return groqApiKey;
     if (m === 'gemini') return geminiApiKey;
     // Free OpenRouter models all use openrouterApiKey
-    if (['qwen', 'mimo', 'deepseek', 'llama'].includes(m)) return openrouterApiKey;
+    if (['qwen', 'deepseek', 'llama'].includes(m)) return openrouterApiKey;
     return undefined;
   };
 
@@ -157,13 +156,6 @@ export function ScriptGenerator({
           </SelectTrigger>
           <SelectContent>
             {/* Free OpenRouter Models */}
-            <SelectItem value="mimo">
-              <div className="flex items-center gap-2">
-                <span>MiMo-V2 (Nível Claude)</span>
-                {preferredModel === 'mimo' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                <span className="text-xs text-green-500">100% Grátis</span>
-              </div>
-            </SelectItem>
             <SelectItem value="deepseek">
               <div className="flex items-center gap-2">
                 <span>DeepSeek R1 (Raciocínio)</span>
@@ -202,7 +194,7 @@ export function ScriptGenerator({
             </SelectItem>
           </SelectContent>
         </Select>
-        {!openrouterApiKey && ['mimo', 'deepseek', 'llama', 'qwen'].includes(model) && (
+        {!openrouterApiKey && ['deepseek', 'llama', 'qwen'].includes(model) && (
           <p className="text-xs text-muted-foreground mt-1">
             Crie uma API key gratuita em{' '}
             <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">

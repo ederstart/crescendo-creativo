@@ -45,6 +45,7 @@ export default function AIStudio() {
   // Automation state
   const [automationScriptId, setAutomationScriptId] = useState<string | null>(null);
   const [automationPending, setAutomationPending] = useState(false);
+  const [autoStartImageGeneration, setAutoStartImageGeneration] = useState(false);
 
   // Read URL params for title (from Script Ideas)
   useEffect(() => {
@@ -295,6 +296,9 @@ export default function AIStudio() {
                 rows={15}
                 className="font-mono text-sm"
               />
+              <p className="text-sm text-muted-foreground mt-2 text-right">
+                {generatedScript.length.toLocaleString('pt-BR')} caracteres
+              </p>
             </div>
           )}
         </TabsContent>
@@ -351,7 +355,9 @@ export default function AIStudio() {
                 onAutomationComplete={() => {
                   setAutomationPending(false);
                   setAutomationScriptId(null);
-                  toast.success('Automação concluída! Clique em "Gerar Todas" para criar as imagens.');
+                  // Trigger auto image generation after scenes are ready
+                  setAutoStartImageGeneration(true);
+                  toast.success('Cenas geradas! Iniciando geração de imagens...');
                 }}
               />
             </div>
@@ -376,6 +382,11 @@ export default function AIStudio() {
               onPromptUsed={() => setImagePromptFromScene('')}
               initialBatchPrompts={batchPromptsForImages}
               onBatchPromptsUsed={() => setBatchPromptsForImages('')}
+              autoStartBatch={autoStartImageGeneration}
+              onAutoStartBatchComplete={() => {
+                setAutoStartImageGeneration(false);
+                toast.success('Automação completa! Todas as imagens foram geradas.');
+              }}
             />
           </div>
         </TabsContent>
