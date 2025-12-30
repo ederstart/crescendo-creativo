@@ -24,7 +24,7 @@ interface Script {
   status?: string;
 }
 
-type AIModel = 'groq' | 'gemini' | 'qwen' | 'mimo' | 'deepseek' | 'llama';
+type AIModel = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
 
 interface ScenePromptGeneratorProps {
   groqApiKey?: string;
@@ -57,7 +57,7 @@ export function ScenePromptGenerator({
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
-  const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('scenes');
+  const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('characters');
   const [numberOfScenes, setNumberOfScenes] = useState(5);
   const [charactersPerScene, setCharactersPerScene] = useState(130); // Changed default to 130
   const [stylePrompt, setStylePrompt] = useState(defaultStylePrompt);
@@ -78,7 +78,7 @@ export function ScenePromptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen', 'mimo', 'deepseek', 'llama'].includes(preferredModel)) {
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
       setModel(preferredModel as AIModel);
     }
   }, [preferredModel]);
@@ -443,12 +443,6 @@ export function ScenePromptGenerator({
               <div className="flex items-center gap-2">
                 <span>Qwen3 (OpenRouter)</span>
                 {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-              </div>
-            </SelectItem>
-            <SelectItem value="mimo">
-              <div className="flex items-center gap-2">
-                <span>MiMo-V2 Flash (OpenRouter)</span>
-                {preferredModel === 'mimo' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
               </div>
             </SelectItem>
             <SelectItem value="deepseek">

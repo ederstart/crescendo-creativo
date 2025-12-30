@@ -110,32 +110,6 @@ serve(async (req) => {
       const data = await response.json();
       generatedText = data.choices[0].message.content;
 
-    } else if (model === 'mimo') {
-      // OpenRouter API - Xiaomi MiMo-V2-Flash (Free) - Claude-level quality
-      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'xiaomi/mimo-v2-flash:free',
-          messages: [
-            { role: 'system', content: defaultSystemPrompt },
-            { role: 'user', content: fullPrompt }
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('OpenRouter MiMo API error:', error);
-        throw new Error(`OpenRouter MiMo API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      generatedText = data.choices[0].message.content;
-
     } else if (model === 'deepseek') {
       // OpenRouter API - DeepSeek R1 (Free) - Advanced reasoning
       response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -189,7 +163,7 @@ serve(async (req) => {
       generatedText = data.choices[0].message.content;
 
     } else {
-      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "mimo", "deepseek", or "llama".');
+      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "deepseek", or "llama".');
     }
 
     return new Response(JSON.stringify({ generatedText, model }), {

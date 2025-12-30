@@ -33,6 +33,8 @@ interface ImageGalleryProps {
   onPromptUsed?: () => void;
   initialBatchPrompts?: string;
   onBatchPromptsUsed?: () => void;
+  autoStartBatch?: boolean;
+  onAutoStartBatchComplete?: () => void;
 }
 
 // Helper function to clean "Cena X:" prefix from prompts
@@ -57,6 +59,8 @@ export function ImageGallery({
   onPromptUsed,
   initialBatchPrompts,
   onBatchPromptsUsed,
+  autoStartBatch,
+  onAutoStartBatchComplete,
 }: ImageGalleryProps) {
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
@@ -75,6 +79,8 @@ export function ImageGallery({
   const stopBatchRef = useRef(false);
   // Track failed prompts
   const failedPromptsRef = useRef<string[]>([]);
+  // Track if auto-start was triggered
+  const autoStartTriggeredRef = useRef(false);
 
   // Sync with prop when it changes
   useEffect(() => {
@@ -99,6 +105,27 @@ export function ImageGallery({
       onBatchPromptsUsed?.();
     }
   }, [initialBatchPrompts, onBatchPromptsUsed]);
+
+  // Auto-start batch generation when automation triggers it
+  useEffect(() => {
+    if (autoStartBatch && batchPrompts.trim() && !loading && !autoStartTriggeredRef.current && googleCookie) {
+      autoStartTriggeredRef.current = true;
+      // Small delay to ensure UI is ready
+      const timer = setTimeout(() => {
+        handleBatchGenerate().finally(() => {
+          onAutoStartBatchComplete?.();
+        });
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [autoStartBatch, batchPrompts, loading, googleCookie]);
+
+  // Reset auto-start ref when autoStartBatch becomes false
+  useEffect(() => {
+    if (!autoStartBatch) {
+      autoStartTriggeredRef.current = false;
+    }
+  }, [autoStartBatch]);
   const saveStyleTemplate = async () => {
     setSavingStyle(true);
     await onSaveStyleTemplate(styleTemplate);
