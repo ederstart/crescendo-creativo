@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,10 @@ interface ScenePromptGeneratorProps {
   onFavoriteModel?: (model: string) => void;
   onApplyPrompt?: (prompt: string) => void;
   onApplyAllPrompts?: (prompts: string[]) => void;
+  // Automation props
+  autoSelectScriptId?: string | null;
+  autoStart?: boolean;
+  onAutomationComplete?: () => void;
 }
 
 const BATCH_SIZE = 30;
@@ -47,6 +51,9 @@ export function ScenePromptGenerator({
   onFavoriteModel,
   onApplyPrompt,
   onApplyAllPrompts,
+  autoSelectScriptId,
+  autoStart,
+  onAutomationComplete,
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
@@ -82,6 +89,20 @@ export function ScenePromptGenerator({
       fetchScripts();
     }
   }, [user, showCompleted]);
+
+  // Handle automation: auto-select script when provided
+  useEffect(() => {
+    if (autoSelectScriptId && scripts.length > 0 && !selectedScriptId) {
+      const scriptExists = scripts.find(s => s.id === autoSelectScriptId);
+      if (scriptExists) {
+        setSelectedScriptId(autoSelectScriptId);
+      }
+    }
+  }, [autoSelectScriptId, scripts, selectedScriptId]);
+
+  // Handle automation: auto-start generation when script is selected
+  // This ref is used by an effect defined after handleGenerate
+  const autoStartTriggeredRef = React.useRef(false);
 
   const fetchScripts = async () => {
     setLoadingScripts(true);
@@ -262,6 +283,15 @@ export function ScenePromptGenerator({
         setBatchProgress(100);
         onPromptsGenerated(allScenes);
         toast.success(`${allScenes.length} prompts de cenas gerados em ${scriptParts.length} lotes!`);
+        
+        // If automation mode, auto-apply all prompts to images
+        if (autoStart && onApplyAllPrompts) {
+          const allPrompts = allScenes.map(p => `Cena ${p.number}: ${p.prompt}`);
+          setTimeout(() => {
+            onApplyAllPrompts(allPrompts);
+            onAutomationComplete?.();
+          }, 1000);
+        }
       }
     } catch (error) {
       console.error('Error generating scene prompts:', error);
@@ -296,6 +326,20 @@ export function ScenePromptGenerator({
     onApplyAllPrompts?.(allPrompts);
     toast.success(`${allPrompts.length} prompts prontos para gerar imagens!`);
   };
+
+  // Auto-start generation effect (must be after handleGenerate is defined)
+  useEffect(() => {
+    if (autoStart && autoSelectScriptId && selectedScriptId === autoSelectScriptId && !loading && !autoStartTriggeredRef.current) {
+      const script = scripts.find(s => s.id === selectedScriptId);
+      if (script?.content) {
+        autoStartTriggeredRef.current = true;
+        // Small delay to ensure UI is ready
+        setTimeout(() => {
+          handleGenerate();
+        }, 500);
+      }
+    }
+  }, [autoStart, autoSelectScriptId, selectedScriptId, scripts, loading]);
 
   const isFavorite = model === preferredModel;
 

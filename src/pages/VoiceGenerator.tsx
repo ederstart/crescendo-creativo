@@ -19,66 +19,37 @@ import { toast } from 'sonner';
 import { useVoiceGenerator } from '@/hooks/useVoiceGenerator';
 import { generateSpeech, isModelLoaded, isModelLoading, getLoadProgress, type TTSVoice } from '@/lib/kokoroTTS';
 
-// Kokoro TTS voices - multiple languages
+// Kokoro TTS voices - English only (American and British)
+// Note: Kokoro-js v1.2 only supports English voices
 const KOKORO_VOICES: Record<string, { id: TTSVoice; name: string; gender: 'male' | 'female'; quality?: string }[]> = {
-  'pt-BR': [
-    { id: 'pm_santa', name: 'Santa', gender: 'male', quality: 'A' },
-    { id: 'pf_dora', name: 'Dora', gender: 'female', quality: 'A' },
-    { id: 'pm_alex', name: 'Alex', gender: 'male', quality: 'B' },
-  ],
   'en-US': [
     { id: 'af_heart', name: 'Heart', gender: 'female', quality: 'A' },
     { id: 'af_bella', name: 'Bella', gender: 'female', quality: 'A-' },
-    { id: 'af_sarah', name: 'Sarah', gender: 'female', quality: 'B' },
+    { id: 'af_sarah', name: 'Sarah', gender: 'female', quality: 'C+' },
     { id: 'af_nicole', name: 'Nicole', gender: 'female', quality: 'B-' },
-    { id: 'am_michael', name: 'Michael', gender: 'male', quality: 'B' },
-    { id: 'am_fenrir', name: 'Fenrir', gender: 'male', quality: 'B' },
-    { id: 'am_adam', name: 'Adam', gender: 'male', quality: 'C' },
+    { id: 'af_nova', name: 'Nova', gender: 'female', quality: 'C' },
+    { id: 'af_sky', name: 'Sky', gender: 'female', quality: 'C-' },
+    { id: 'am_michael', name: 'Michael', gender: 'male', quality: 'C+' },
+    { id: 'am_fenrir', name: 'Fenrir', gender: 'male', quality: 'C+' },
+    { id: 'am_adam', name: 'Adam', gender: 'male', quality: 'F+' },
+    { id: 'am_puck', name: 'Puck', gender: 'male', quality: 'C+' },
+    { id: 'am_santa', name: 'Santa', gender: 'male', quality: 'D-' },
   ],
   'en-GB': [
-    { id: 'bf_emma', name: 'Emma', gender: 'female', quality: 'A' },
-    { id: 'bf_isabella', name: 'Isabella', gender: 'female', quality: 'B' },
-    { id: 'bm_george', name: 'George', gender: 'male', quality: 'B' },
-    { id: 'bm_lewis', name: 'Lewis', gender: 'male', quality: 'B' },
-  ],
-  'es': [
-    { id: 'ef_dora', name: 'Dora', gender: 'female', quality: 'A' },
-    { id: 'em_alex', name: 'Alex', gender: 'male', quality: 'B' },
-    { id: 'em_santa', name: 'Santa', gender: 'male', quality: 'B' },
-  ],
-  'ja': [
-    { id: 'jf_alpha', name: 'Alpha', gender: 'female', quality: 'A' },
-    { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'female', quality: 'B' },
-    { id: 'jm_kumo', name: 'Kumo', gender: 'male', quality: 'B' },
-  ],
-  'zh': [
-    { id: 'zf_xiaobei', name: 'Xiaobei', gender: 'female', quality: 'A' },
-    { id: 'zf_xiaoni', name: 'Xiaoni', gender: 'female', quality: 'B' },
-    { id: 'zm_yunxi', name: 'Yunxi', gender: 'male', quality: 'B' },
-  ],
-  'fr': [
-    { id: 'ff_siwis', name: 'Siwis', gender: 'female', quality: 'A' },
-  ],
-  'it': [
-    { id: 'if_sara', name: 'Sara', gender: 'female', quality: 'A' },
-    { id: 'im_nicola', name: 'Nicola', gender: 'male', quality: 'B' },
-  ],
-  'hi': [
-    { id: 'hf_alpha', name: 'Alpha', gender: 'female', quality: 'A' },
-    { id: 'hm_omega', name: 'Omega', gender: 'male', quality: 'B' },
+    { id: 'bf_emma', name: 'Emma', gender: 'female', quality: 'B-' },
+    { id: 'bf_isabella', name: 'Isabella', gender: 'female', quality: 'C' },
+    { id: 'bf_alice', name: 'Alice', gender: 'female', quality: 'D' },
+    { id: 'bf_lily', name: 'Lily', gender: 'female', quality: 'D' },
+    { id: 'bm_george', name: 'George', gender: 'male', quality: 'C' },
+    { id: 'bm_lewis', name: 'Lewis', gender: 'male', quality: 'D+' },
+    { id: 'bm_daniel', name: 'Daniel', gender: 'male', quality: 'D' },
+    { id: 'bm_fable', name: 'Fable', gender: 'male', quality: 'C' },
   ],
 };
 
 const LANGUAGE_LABELS: Record<string, string> = {
-  'pt-BR': '🇧🇷 Português (Brasil)',
   'en-US': '🇺🇸 English (US)',
   'en-GB': '🇬🇧 English (UK)',
-  'es': '🇪🇸 Español',
-  'ja': '🇯🇵 日本語',
-  'zh': '🇨🇳 中文',
-  'fr': '🇫🇷 Français',
-  'it': '🇮🇹 Italiano',
-  'hi': '🇮🇳 हिंदी',
 };
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -92,8 +63,8 @@ export default function VoiceGenerator() {
   } = useVoiceGenerator();
 
   const [text, setText] = useState('');
-  const [language, setLanguage] = useState('pt-BR');
-  const [voiceId, setVoiceId] = useState<TTSVoice>('pm_santa');
+  const [language, setLanguage] = useState('en-US');
+  const [voiceId, setVoiceId] = useState<TTSVoice>('af_heart');
   const [loading, setLoading] = useState(false);
   const [modelLoadProgress, setModelLoadProgress] = useState(0);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
