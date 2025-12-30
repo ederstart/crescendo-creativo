@@ -90,6 +90,15 @@ export function ImageGallery({
       onPromptUsed?.();
     }
   }, [initialPrompt, onPromptUsed]);
+
+  // Apply batch prompts when received from scene generator "Apply All"
+  useEffect(() => {
+    if (initialBatchPrompts && initialBatchPrompts.trim()) {
+      setBatchPrompts(initialBatchPrompts);
+      setIsBatchMode(true);
+      onBatchPromptsUsed?.();
+    }
+  }, [initialBatchPrompts, onBatchPromptsUsed]);
   const saveStyleTemplate = async () => {
     setSavingStyle(true);
     await onSaveStyleTemplate(styleTemplate);

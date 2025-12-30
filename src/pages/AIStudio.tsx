@@ -41,6 +41,10 @@ export default function AIStudio() {
   const [activeTab, setActiveTab] = useState('script');
   const [imagePromptFromScene, setImagePromptFromScene] = useState('');
   const [batchPromptsForImages, setBatchPromptsForImages] = useState('');
+  
+  // Automation state
+  const [automationScriptId, setAutomationScriptId] = useState<string | null>(null);
+  const [automationPending, setAutomationPending] = useState(false);
 
   // Read URL params for title (from Script Ideas)
   useEffect(() => {
@@ -52,6 +56,20 @@ export default function AIStudio() {
       searchParams.delete('title');
       setSearchParams(searchParams, { replace: true });
       toast.info(`Criando roteiro: "${titleFromUrl}"`);
+    }
+    
+    // Read automation params
+    const automate = searchParams.get('automate');
+    const scriptId = searchParams.get('scriptId');
+    if (automate === 'true' && scriptId) {
+      setAutomationScriptId(scriptId);
+      setAutomationPending(true);
+      setActiveTab('scene');
+      // Clear params
+      searchParams.delete('automate');
+      searchParams.delete('scriptId');
+      setSearchParams(searchParams, { replace: true });
+      toast.info('Iniciando automação: gerando cenas...');
     }
   }, [searchParams, setSearchParams]);
 
@@ -328,6 +346,13 @@ export default function AIStudio() {
                 onFavoriteModel={(model) => handleFavoriteModel('scene', model)}
                 onApplyPrompt={handleApplyPromptToImage}
                 onApplyAllPrompts={handleApplyAllPromptsToImages}
+                autoSelectScriptId={automationScriptId}
+                autoStart={automationPending}
+                onAutomationComplete={() => {
+                  setAutomationPending(false);
+                  setAutomationScriptId(null);
+                  toast.success('Automação concluída! Clique em "Gerar Todas" para criar as imagens.');
+                }}
               />
             </div>
           </div>

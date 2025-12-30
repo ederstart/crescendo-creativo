@@ -7,16 +7,15 @@ let ttsInstance: KokoroTTS | null = null;
 let isLoading = false;
 let loadProgress = 0;
 
+// Kokoro-js only supports English voices (American and British)
 export type TTSVoice = 
-  | 'pm_santa' | 'pf_dora' | 'pm_alex'  // pt-BR
-  | 'af_heart' | 'af_bella' | 'af_sarah' | 'af_nicole' | 'am_michael' | 'am_fenrir' | 'am_adam'  // en-US
-  | 'bf_emma' | 'bf_isabella' | 'bm_george' | 'bm_lewis'  // en-GB
-  | 'ef_dora' | 'em_alex' | 'em_santa'  // es
-  | 'jf_alpha' | 'jf_gongitsune' | 'jm_kumo'  // ja
-  | 'zf_xiaobei' | 'zf_xiaoni' | 'zm_yunxi'  // zh
-  | 'ff_siwis'  // fr
-  | 'if_sara' | 'im_nicola'  // it
-  | 'hf_alpha' | 'hm_omega';  // hi
+  // American English
+  | 'af_heart' | 'af_alloy' | 'af_aoede' | 'af_bella' | 'af_jessica' | 'af_kore' 
+  | 'af_nicole' | 'af_nova' | 'af_river' | 'af_sarah' | 'af_sky'
+  | 'am_adam' | 'am_echo' | 'am_eric' | 'am_fenrir' | 'am_liam' | 'am_michael' | 'am_onyx' | 'am_puck' | 'am_santa'
+  // British English
+  | 'bf_alice' | 'bf_emma' | 'bf_isabella' | 'bf_lily'
+  | 'bm_daniel' | 'bm_fable' | 'bm_george' | 'bm_lewis';
 
 export interface GenerateOptions {
   voice?: TTSVoice;
@@ -48,8 +47,16 @@ export async function initKokoro(onProgress?: (progress: number) => void): Promi
     ttsInstance = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
       dtype: 'q8', // Smaller model (~80MB), good quality
       device: 'wasm', // Maximum browser compatibility
-      progress_callback: (progress: { progress: number }) => {
-        loadProgress = Math.round(progress.progress || 0);
+      progress_callback: (progress) => {
+        // Handle different progress info types
+        if ('progress' in progress && typeof progress.progress === 'number') {
+          loadProgress = Math.round(progress.progress);
+        } else if ('status' in progress) {
+          // DoneProgressInfo or other status types
+          if (progress.status === 'done') {
+            loadProgress = 100;
+          }
+        }
         onProgress?.(loadProgress);
         console.log(`[Kokoro TTS] Loading: ${loadProgress}%`);
       },
@@ -77,7 +84,7 @@ export async function generateSpeech(
   text: string,
   options: GenerateOptions = {}
 ): Promise<Blob> {
-  const { voice = 'pm_santa', speed = 1, onProgress } = options;
+  const { voice = 'af_heart', speed = 1, onProgress } = options;
 
   // Initialize if needed
   const tts = await initKokoro(onProgress);
