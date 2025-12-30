@@ -5,7 +5,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
 import { 
   Volume2, 
   Play, 
@@ -18,9 +17,71 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useVoiceGenerator, VoicePreset, GeneratedAudio } from '@/hooks/useVoiceGenerator';
+import { useVoiceGenerator, VoicePreset } from '@/hooks/useVoiceGenerator';
 import { useAuth } from '@/hooks/useAuth';
-import { getKokoroTTS, isKokoroLoaded, KOKORO_VOICES, DEFAULT_VOICE, DEFAULT_LANGUAGE, KokoroVoiceId } from '@/lib/kokoroTTS';
+import { supabase } from '@/lib/supabase';
+
+// Kokoro TTS voices - multiple languages
+const KOKORO_VOICES: Record<string, { id: string; name: string; gender: 'male' | 'female'; quality?: string }[]> = {
+  'pt-BR': [
+    { id: 'pm_santa', name: 'Santa', gender: 'male', quality: 'A' },
+    { id: 'pf_dora', name: 'Dora', gender: 'female', quality: 'A' },
+    { id: 'pm_alex', name: 'Alex', gender: 'male', quality: 'B' },
+  ],
+  'en-US': [
+    { id: 'af_heart', name: 'Heart', gender: 'female', quality: 'A' },
+    { id: 'af_bella', name: 'Bella', gender: 'female', quality: 'A-' },
+    { id: 'af_sarah', name: 'Sarah', gender: 'female', quality: 'B' },
+    { id: 'af_nicole', name: 'Nicole', gender: 'female', quality: 'B-' },
+    { id: 'am_michael', name: 'Michael', gender: 'male', quality: 'B' },
+    { id: 'am_fenrir', name: 'Fenrir', gender: 'male', quality: 'B' },
+    { id: 'am_adam', name: 'Adam', gender: 'male', quality: 'C' },
+  ],
+  'en-GB': [
+    { id: 'bf_emma', name: 'Emma', gender: 'female', quality: 'A' },
+    { id: 'bf_isabella', name: 'Isabella', gender: 'female', quality: 'B' },
+    { id: 'bm_george', name: 'George', gender: 'male', quality: 'B' },
+    { id: 'bm_lewis', name: 'Lewis', gender: 'male', quality: 'B' },
+  ],
+  'es': [
+    { id: 'ef_dora', name: 'Dora', gender: 'female', quality: 'A' },
+    { id: 'em_alex', name: 'Alex', gender: 'male', quality: 'B' },
+    { id: 'em_santa', name: 'Santa', gender: 'male', quality: 'B' },
+  ],
+  'ja': [
+    { id: 'jf_alpha', name: 'Alpha', gender: 'female', quality: 'A' },
+    { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'female', quality: 'B' },
+    { id: 'jm_kumo', name: 'Kumo', gender: 'male', quality: 'B' },
+  ],
+  'zh': [
+    { id: 'zf_xiaobei', name: 'Xiaobei', gender: 'female', quality: 'A' },
+    { id: 'zf_xiaoni', name: 'Xiaoni', gender: 'female', quality: 'B' },
+    { id: 'zm_yunxi', name: 'Yunxi', gender: 'male', quality: 'B' },
+  ],
+  'fr': [
+    { id: 'ff_siwis', name: 'Siwis', gender: 'female', quality: 'A' },
+  ],
+  'it': [
+    { id: 'if_sara', name: 'Sara', gender: 'female', quality: 'A' },
+    { id: 'im_nicola', name: 'Nicola', gender: 'male', quality: 'B' },
+  ],
+  'hi': [
+    { id: 'hf_alpha', name: 'Alpha', gender: 'female', quality: 'A' },
+    { id: 'hm_omega', name: 'Omega', gender: 'male', quality: 'B' },
+  ],
+};
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  'pt-BR': '🇧🇷 Português (Brasil)',
+  'en-US': '🇺🇸 English (US)',
+  'en-GB': '🇬🇧 English (UK)',
+  'es': '🇪🇸 Español',
+  'ja': '🇯🇵 日本語',
+  'zh': '🇨🇳 中文',
+  'fr': '🇫🇷 Français',
+  'it': '🇮🇹 Italiano',
+  'hi': '🇮🇳 हिंदी',
+};
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -38,26 +99,14 @@ export default function VoiceGenerator() {
   } = useVoiceGenerator();
 
   const [text, setText] = useState('');
-  const [language, setLanguage] = useState(DEFAULT_LANGUAGE);
-  const [voiceId, setVoiceId] = useState<KokoroVoiceId>(DEFAULT_VOICE);
+  const [language, setLanguage] = useState('pt-BR');
+  const [voiceId, setVoiceId] = useState('pm_santa');
   const [loading, setLoading] = useState(false);
-  const [kokoroLoading, setKokoroLoading] = useState(false);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Check if Kokoro is already loaded
-  useEffect(() => {
-    if (!isKokoroLoaded()) {
-      // Pre-load Kokoro in background
-      setKokoroLoading(true);
-      getKokoroTTS()
-        .then(() => setKokoroLoading(false))
-        .catch(() => setKokoroLoading(false));
-    }
-  }, []);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -74,7 +123,7 @@ export default function VoiceGenerator() {
   }, [language, voiceId]);
 
   const handleSelectPreset = (preset: VoicePreset) => {
-    setVoiceId(preset.voice_id as KokoroVoiceId);
+    setVoiceId(preset.voice_id);
   };
 
   const handleSavePreset = async () => {
@@ -96,14 +145,18 @@ export default function VoiceGenerator() {
     setLoading(true);
 
     try {
-      // Load Kokoro TTS
-      const tts = await getKokoroTTS();
-      
-      // Generate audio
-      const audio = await tts.generate(text, { voice: voiceId });
-      
-      // Convert to blob and create URL
-      const audioBlob = await audio.toBlob();
+      const { data, error } = await supabase.functions.invoke('kokoro-tts', {
+        body: {
+          text,
+          voice: voiceId,
+          speed: playbackSpeed,
+        },
+      });
+
+      if (error) throw error;
+
+      // The response is already a blob from the edge function
+      const audioBlob = new Blob([data], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
       // Create audio element and play
@@ -172,7 +225,7 @@ export default function VoiceGenerator() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename || 'audio.wav';
+    a.download = filename || 'audio.mp3';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -195,21 +248,6 @@ export default function VoiceGenerator() {
         </div>
       </div>
 
-      {/* Kokoro Loading Indicator */}
-      {kokoroLoading && (
-        <Card className="mb-6 border-primary/20 bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Carregando modelo de voz...</p>
-                <p className="text-xs text-muted-foreground">Primeira vez pode levar 30-60 segundos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Left Column - Generator */}
         <div className="lg:col-span-2 space-y-4 md:space-y-6">
@@ -227,16 +265,18 @@ export default function VoiceGenerator() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pt-BR">🇧🇷 Português (Brasil)</SelectItem>
-                      <SelectItem value="en-US">🇺🇸 English (US)</SelectItem>
-                      <SelectItem value="en-GB">🇬🇧 English (UK)</SelectItem>
+                      {Object.entries(LANGUAGE_LABELS).map(([code, label]) => (
+                        <SelectItem key={code} value={code}>
+                          {label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
                   <Label>Voz</Label>
-                  <Select value={voiceId} onValueChange={(v) => setVoiceId(v as KokoroVoiceId)}>
+                  <Select value={voiceId} onValueChange={setVoiceId}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
@@ -246,6 +286,9 @@ export default function VoiceGenerator() {
                           <div className="flex items-center gap-2">
                             <span>{voice.gender === 'male' ? '👨' : '👩'}</span>
                             <span>{voice.name}</span>
+                            {voice.quality && (
+                              <span className="text-xs text-muted-foreground">({voice.quality})</span>
+                            )}
                           </div>
                         </SelectItem>
                       ))}
@@ -272,7 +315,7 @@ export default function VoiceGenerator() {
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button 
                   onClick={handleGenerate} 
-                  disabled={loading || kokoroLoading}
+                  disabled={loading}
                   variant="fire"
                   className="flex-1"
                 >
@@ -342,7 +385,7 @@ export default function VoiceGenerator() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleDownload(currentAudioUrl, 'audio-gerado.wav')}
+                    onClick={() => handleDownload(currentAudioUrl, 'audio-gerado.mp3')}
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Download
@@ -405,7 +448,7 @@ export default function VoiceGenerator() {
                             {audio.text_content}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {audio.model_used} • {new Date(audio.created_at).toLocaleDateString('pt-BR')}
+                            {audio.model_used} • {new Date(audio.created_at || '').toLocaleDateString('pt-BR')}
                           </p>
                         </div>
                         <div className="flex gap-1">
@@ -494,9 +537,13 @@ export default function VoiceGenerator() {
                                 toggleFavorite(preset.id, preset.is_favorite);
                               }}
                             >
-                              <Star className={`w-3 h-3 ${
-                                preset.is_favorite ? 'fill-yellow-500 text-yellow-500' : ''
-                              }`} />
+                              <Star 
+                                className={`w-3 h-3 ${
+                                  preset.is_favorite 
+                                    ? 'fill-yellow-500 text-yellow-500' 
+                                    : 'text-muted-foreground'
+                                }`} 
+                              />
                             </Button>
                             <Button
                               size="icon"
@@ -516,13 +563,6 @@ export default function VoiceGenerator() {
                   </div>
                 </ScrollArea>
               )}
-
-              <div className="mt-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-                <p className="text-xs text-muted-foreground">
-                  <strong>✨ Kokoro TTS</strong><br />
-                  100% gratuito e ilimitado. Roda localmente no navegador.
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>

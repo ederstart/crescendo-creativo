@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.generate-whisk-v2]
 verify_jwt = false
+
+[functions.kokoro-tts]
+verify_jwt = false
