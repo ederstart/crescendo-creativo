@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Sparkles, Upload, FileText, X, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { loadPuter } from '@/lib/puter';
+
+type ModelType = 'groq' | 'gemini' | 'qwen' | 'mimo' | 'deepseek' | 'llama';
 
 interface ScriptGeneratorProps {
   groqApiKey?: string;
@@ -23,20 +24,19 @@ export function ScriptGenerator({
   geminiApiKey,
   openrouterApiKey,
   templateContent = '',
-  preferredModel = 'groq',
+  preferredModel = 'mimo',
   onGenerated,
   onFavoriteModel,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen' | 'claude'>(
-    preferredModel as 'groq' | 'gemini' | 'qwen' | 'claude'
+  const [model, setModel] = useState<ModelType>(
+    (preferredModel as ModelType) || 'mimo'
   );
 
   // When template content is set, prepend it to the prompt
   useEffect(() => {
     if (templateContent) {
       setPrompt(prev => {
-        // Only add template if not already included
         if (!prev.includes(templateContent)) {
           return templateContent + (prev ? '\n\n' + prev : '');
         }
@@ -44,6 +44,7 @@ export function ScriptGenerator({
       });
     }
   }, [templateContent]);
+
   const [loading, setLoading] = useState(false);
   const [attachedContent, setAttachedContent] = useState('');
   const [attachedFileName, setAttachedFileName] = useState('');
@@ -51,8 +52,8 @@ export function ScriptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen', 'claude'].includes(preferredModel)) {
-      setModel(preferredModel as 'groq' | 'gemini' | 'qwen' | 'claude');
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'mimo', 'deepseek', 'llama'].includes(preferredModel)) {
+      setModel(preferredModel as ModelType);
     }
   }, [preferredModel]);
 
@@ -82,33 +83,18 @@ export function ScriptGenerator({
       return;
     }
 
-    // Claude uses Puter.js (no API key needed)
-    if (model === 'claude') {
-      setLoading(true);
-      try {
-        const puterInstance = await loadPuter();
-        const response = await puterInstance.ai.chat(prompt, { model: 'claude-sonnet-4-5' });
-        let generatedText = '';
-        if (typeof response === 'string') {
-          generatedText = response;
-        } else if (response?.message?.content?.[0]?.text) {
-          generatedText = response.message.content[0].text;
-        }
-        onGenerated(generatedText, 'claude');
-        toast.success('Roteiro gerado com sucesso!');
-      } catch (error) {
-        console.error('Error generating with Claude:', error);
-        toast.error('Erro ao gerar com Claude');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    const apiKey = model === 'groq' ? groqApiKey : model === 'gemini' ? geminiApiKey : openrouterApiKey;
+    // Check API key for models that need it
+    const apiKey = getApiKey(model);
     if (!apiKey) {
-      const modelName = model === 'groq' ? 'Groq' : model === 'gemini' ? 'Gemini' : 'OpenRouter (Qwen)';
-      toast.error(`Configure a API key do ${modelName} nas configurações`);
+      const modelNames: Record<ModelType, string> = {
+        groq: 'Groq',
+        gemini: 'Gemini',
+        qwen: 'OpenRouter',
+        mimo: 'OpenRouter',
+        deepseek: 'OpenRouter',
+        llama: 'OpenRouter',
+      };
+      toast.error(`Configure a API key do ${modelNames[model]} nas configurações`);
       return;
     }
 
@@ -137,11 +123,12 @@ export function ScriptGenerator({
     }
   };
 
-  const getApiKey = (m: string) => {
+  const getApiKey = (m: ModelType): string | undefined => {
     if (m === 'groq') return groqApiKey;
     if (m === 'gemini') return geminiApiKey;
-    if (m === 'claude') return 'puter'; // Claude uses Puter.js
-    return openrouterApiKey;
+    // Free OpenRouter models all use openrouterApiKey
+    if (['qwen', 'mimo', 'deepseek', 'llama'].includes(m)) return openrouterApiKey;
+    return undefined;
   };
 
   const hasApiKey = !!getApiKey(model);
@@ -164,41 +151,65 @@ export function ScriptGenerator({
             </Button>
           )}
         </div>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen' | 'claude')}>
+        <Select value={model} onValueChange={(v) => setModel(v as ModelType)}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="claude">
+            {/* Free OpenRouter Models */}
+            <SelectItem value="mimo">
               <div className="flex items-center gap-2">
-                <span>Claude (Sonnet 4.5)</span>
-                {preferredModel === 'claude' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                <span className="text-xs text-green-500">- Grátis via Puter</span>
+                <span>MiMo-V2 (Nível Claude)</span>
+                {preferredModel === 'mimo' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                <span className="text-xs text-green-500">100% Grátis</span>
               </div>
             </SelectItem>
+            <SelectItem value="deepseek">
+              <div className="flex items-center gap-2">
+                <span>DeepSeek R1 (Raciocínio)</span>
+                {preferredModel === 'deepseek' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                <span className="text-xs text-green-500">100% Grátis</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="llama">
+              <div className="flex items-center gap-2">
+                <span>Llama 3.3 70B (Português)</span>
+                {preferredModel === 'llama' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                <span className="text-xs text-green-500">100% Grátis</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="qwen">
+              <div className="flex items-center gap-2">
+                <span>Qwen3 Coder</span>
+                {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                <span className="text-xs text-green-500">100% Grátis</span>
+              </div>
+            </SelectItem>
+            {/* API Key Models */}
             <SelectItem value="groq">
               <div className="flex items-center gap-2">
                 <span>Groq (Llama 3.3 70B)</span>
                 {preferredModel === 'groq' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                {!groqApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
+                {!groqApiKey && <span className="text-xs text-destructive">Sem API Key</span>}
               </div>
             </SelectItem>
             <SelectItem value="gemini">
               <div className="flex items-center gap-2">
                 <span>Gemini 2.5 Flash</span>
                 {preferredModel === 'gemini' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                {!geminiApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
-              </div>
-            </SelectItem>
-            <SelectItem value="qwen">
-              <div className="flex items-center gap-2">
-                <span>Qwen3 Coder (OpenRouter)</span>
-                {preferredModel === 'qwen' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                {!openrouterApiKey && <span className="text-xs text-destructive">- Sem API Key</span>}
+                {!geminiApiKey && <span className="text-xs text-destructive">Sem API Key</span>}
               </div>
             </SelectItem>
           </SelectContent>
         </Select>
+        {!openrouterApiKey && ['mimo', 'deepseek', 'llama', 'qwen'].includes(model) && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Crie uma API key gratuita em{' '}
+            <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              openrouter.ai
+            </a>
+          </p>
+        )}
       </div>
 
       <div>

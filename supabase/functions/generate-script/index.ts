@@ -27,6 +27,8 @@ serve(async (req) => {
       fullPrompt = `Conteúdo de referência:\n${attachedContent}\n\n${prompt}`;
     }
 
+    const defaultSystemPrompt = systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.';
+
     if (model === 'groq') {
       // Groq API
       response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -38,7 +40,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [
-            { role: 'system', content: systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.' },
+            { role: 'system', content: defaultSystemPrompt },
             { role: 'user', content: fullPrompt }
           ],
           max_tokens: 4096,
@@ -55,7 +57,7 @@ serve(async (req) => {
       generatedText = data.choices[0].message.content;
 
     } else if (model === 'gemini') {
-      // Gemini API - Updated to 2.5 Flash
+      // Gemini API - 2.5 Flash
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
@@ -64,7 +66,7 @@ serve(async (req) => {
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `${systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.'}\n\n${fullPrompt}`
+              text: `${defaultSystemPrompt}\n\n${fullPrompt}`
             }]
           }],
           generationConfig: {
@@ -83,7 +85,7 @@ serve(async (req) => {
       generatedText = data.candidates[0].content.parts[0].text;
 
     } else if (model === 'qwen') {
-      // OpenRouter API - Qwen3 Coder
+      // OpenRouter API - Qwen3 Coder (Free)
       response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -93,7 +95,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: 'qwen/qwen3-coder:free',
           messages: [
-            { role: 'system', content: systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.' },
+            { role: 'system', content: defaultSystemPrompt },
             { role: 'user', content: fullPrompt }
           ],
         }),
@@ -108,8 +110,86 @@ serve(async (req) => {
       const data = await response.json();
       generatedText = data.choices[0].message.content;
 
+    } else if (model === 'mimo') {
+      // OpenRouter API - Xiaomi MiMo-V2-Flash (Free) - Claude-level quality
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'xiaomi/mimo-v2-flash:free',
+          messages: [
+            { role: 'system', content: defaultSystemPrompt },
+            { role: 'user', content: fullPrompt }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('OpenRouter MiMo API error:', error);
+        throw new Error(`OpenRouter MiMo API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      generatedText = data.choices[0].message.content;
+
+    } else if (model === 'deepseek') {
+      // OpenRouter API - DeepSeek R1 (Free) - Advanced reasoning
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'deepseek/deepseek-r1-0528:free',
+          messages: [
+            { role: 'system', content: defaultSystemPrompt },
+            { role: 'user', content: fullPrompt }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('OpenRouter DeepSeek API error:', error);
+        throw new Error(`OpenRouter DeepSeek API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      generatedText = data.choices[0].message.content;
+
+    } else if (model === 'llama') {
+      // OpenRouter API - Meta Llama 3.3 70B (Free) - Native PT-BR support
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-3.3-70b-instruct:free',
+          messages: [
+            { role: 'system', content: defaultSystemPrompt },
+            { role: 'user', content: fullPrompt }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('OpenRouter Llama API error:', error);
+        throw new Error(`OpenRouter Llama API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      generatedText = data.choices[0].message.content;
+
     } else {
-      throw new Error('Invalid model specified. Use "groq", "gemini", or "qwen".');
+      throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "mimo", "deepseek", or "llama".');
     }
 
     return new Response(JSON.stringify({ generatedText, model }), {
