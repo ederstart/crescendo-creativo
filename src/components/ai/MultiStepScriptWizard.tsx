@@ -30,6 +30,7 @@ interface StepData {
   parts: string;
   expandedParts: string[];
   finalScript: string;
+  language: string;
 }
 
 const STEPS = [
@@ -82,6 +83,7 @@ export function MultiStepScriptWizard({
   const [loading, setLoading] = useState(false);
   const [expandingAll, setExpandingAll] = useState(false);
   const [expandProgress, setExpandProgress] = useState<{ current: number; total: number } | null>(null);
+  const [abortExpansionRef] = useState({ current: false }); // Use ref pattern for closure
   const [abortExpansion, setAbortExpansion] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -97,6 +99,7 @@ export function MultiStepScriptWizard({
     parts: '',
     expandedParts: [],
     finalScript: '',
+    language: '',
   });
 
   // Load default template on mount
@@ -176,20 +179,29 @@ export function MultiStepScriptWizard({
     try {
       let prompt = '';
       
+      // Use user-defined language or instruct LLM to detect
+      const langInstruction = data.language 
+        ? `CRITICAL: Respond ONLY in ${data.language}. DO NOT use any other language.`
+        : `CRITICAL: Detect the language of the content and respond ONLY in that same language. Match the language exactly.`;
+      
       if (currentStep === 0) {
         if (!userInput.trim()) {
           toast.error('Digite uma descrição primeiro');
           setLoading(false);
           return;
         }
-        prompt = `CRITICAL: Detect the language of this idea and respond ONLY in that same language. If it's English, respond in English. If Portuguese, respond in Portuguese. If Chinese, respond in Chinese. Match the language exactly.
+        prompt = `${langInstruction}
 
 Based on this video/story idea: "${userInput}"
         
 Generate exactly 3 creative and catchy title suggestions, one per line.
 Only the titles, no numbering or explanation.`;
       } else if (currentStep === 1) {
-        prompt = `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language.
+        const stepLangInstruction = data.language 
+          ? `CRITICAL: Respond ONLY in ${data.language}. DO NOT use any other language.`
+          : `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language.`;
+        
+        prompt = `${stepLangInstruction}
 
 Title: "${data.title}"
 Additional description: "${userInput}"
@@ -198,7 +210,13 @@ Generate exactly 3 different synopses (each 2-3 sentences) for this content.
 Separate each synopsis with "---" on a new line.
 Only the synopses, no numbering, no extra comments.`;
       } else if (currentStep === 2) {
-        prompt = `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language. Do NOT add any personal comments or observations. Output ONLY the structure.
+        const stepLangInstruction = data.language 
+          ? `CRITICAL: Respond ONLY in ${data.language}. DO NOT use any other language.`
+          : `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language.`;
+        
+        prompt = `${stepLangInstruction}
+
+Do NOT add any personal comments or observations. Output ONLY the structure.
 
 Title: "${data.title}"
 ${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
@@ -234,7 +252,7 @@ Output ONLY the parts list, nothing else.`;
     }
   };
 
-  const handleExpandPart = async (partDescription: string, partIndex: number) => {
+  const handleExpandPart = async (partDescription: string, partIndex: number): Promise<boolean> => {
     setLoading(true);
 
     try {
@@ -245,10 +263,18 @@ Output ONLY the parts list, nothing else.`;
         ? data.expandedParts[partIndex - 1].slice(-4000) 
         : '';
       
+      // Get the last paragraph for duplicate detection
+      const lastParagraph = previousPartContent ? previousPartContent.split('\n\n').pop()?.trim() || '' : '';
+      
       // Get next part info for transition
       const nextPartInfo = parts[partIndex + 1] ? `NEXT PART PREVIEW: ${parts[partIndex + 1]}` : '';
 
-      const prompt = `CRITICAL LANGUAGE RULE: Detect the language of the title "${data.title}" and write your ENTIRE response in that EXACT language. If the title is in English, write in English. If in Portuguese, write in Portuguese. If in Chinese, write in Chinese. DO NOT MIX LANGUAGES.
+      // Use user-defined language or instruct LLM to detect
+      const languageInstruction = data.language 
+        ? `CRITICAL: Write your ENTIRE response in ${data.language}. DO NOT use any other language.`
+        : `CRITICAL LANGUAGE RULE: Detect the language of the title "${data.title}" and write your ENTIRE response in that EXACT language. If the title is in English, write in English. If in Portuguese, write in Portuguese. If in Chinese, write in Chinese. DO NOT MIX LANGUAGES.`;
+
+      const prompt = `${languageInstruction}
 
 SCRIPT CONTEXT:
 Title: "${data.title}"
@@ -292,6 +318,26 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
         .replace(/^\/+/gm, '')     // Remove /
         .trim();
       
+      // Detect and remove duplicated content from previous part
+      if (lastParagraph && lastParagraph.length > 50) {
+        // Check if response starts with similar content
+        const responseStart = response.slice(0, lastParagraph.length + 200);
+        const similarity = calculateSimilarity(lastParagraph, responseStart);
+        if (similarity > 0.6) {
+          // Find where the new content actually starts
+          const lines = response.split('\n');
+          let startIndex = 0;
+          for (let i = 0; i < Math.min(lines.length, 10); i++) {
+            if (lastParagraph.includes(lines[i].trim()) && lines[i].trim().length > 20) {
+              startIndex = i + 1;
+            }
+          }
+          if (startIndex > 0) {
+            response = lines.slice(startIndex).join('\n').trim();
+          }
+        }
+      }
+      
       setData(prev => {
         const newParts = [...prev.expandedParts];
         newParts[partIndex] = response;
@@ -301,12 +347,27 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
       if (!expandingAll) {
         toast.success(`Parte ${partIndex + 1} expandida! (${response.length.toLocaleString('pt-BR')} caracteres)`);
       }
+      
+      return true; // Success
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Erro ao expandir parte');
+      toast.error(`Erro ao expandir parte ${partIndex + 1}`);
+      return false; // Failure
     } finally {
       setLoading(false);
     }
+  };
+
+  // Simple similarity check for duplicate detection
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    const words1 = str1.toLowerCase().split(/\s+/);
+    const words2 = str2.toLowerCase().split(/\s+/);
+    const set1 = new Set(words1);
+    let matches = 0;
+    for (const word of words2) {
+      if (set1.has(word) && word.length > 3) matches++;
+    }
+    return matches / Math.max(words1.length, 1);
   };
 
   const assembleFinalScript = () => {
@@ -377,7 +438,7 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
 
   const resetWizard = () => {
     setCurrentStep(0);
-    setData({ title: '', synopsis: '', parts: '', expandedParts: [], finalScript: '' });
+    setData({ title: '', synopsis: '', parts: '', expandedParts: [], finalScript: '', language: '' });
     setSuggestions([]);
     setUserInput('');
     setScriptTitle('');
@@ -396,14 +457,18 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
     }
 
     setExpandingAll(true);
+    abortExpansionRef.current = false;
     setAbortExpansion(false);
     setExpandProgress({ current: 0, total: parts.length });
 
+    let allSuccessful = true;
+
     try {
       for (let i = 0; i < parts.length; i++) {
-        // Check if user wants to stop
-        if (abortExpansion) {
+        // Check if user wants to stop using ref (works inside closure)
+        if (abortExpansionRef.current) {
           toast.info('Expansão cancelada pelo usuário');
+          allSuccessful = false;
           break;
         }
         
@@ -413,14 +478,21 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
         }
 
         setExpandProgress({ current: i + 1, total: parts.length });
-        await handleExpandPart(parts[i], i);
+        const success = await handleExpandPart(parts[i], i);
         
-        if (i < parts.length - 1) {
+        // Abort if expansion failed
+        if (!success) {
+          toast.error(`Falha na parte ${i + 1}. Expansão abortada.`);
+          allSuccessful = false;
+          break;
+        }
+        
+        if (i < parts.length - 1 && !abortExpansionRef.current) {
           await new Promise(r => setTimeout(r, 1000));
         }
       }
       
-      if (!abortExpansion) {
+      if (allSuccessful && !abortExpansionRef.current) {
         toast.success('Todas as partes foram expandidas!');
         // Auto advance to step 5 after all expanded
         setTimeout(() => {
@@ -432,8 +504,15 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
     } finally {
       setExpandingAll(false);
       setExpandProgress(null);
+      abortExpansionRef.current = false;
       setAbortExpansion(false);
     }
+  };
+
+  const handleStopExpansion = () => {
+    abortExpansionRef.current = true;
+    setAbortExpansion(true);
+    toast.info('Parando expansão...');
   };
 
   const handleSaveScript = async () => {
@@ -782,7 +861,7 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
                     </Button>
                     <Button 
                       variant="destructive" 
-                      onClick={() => setAbortExpansion(true)}
+                      onClick={handleStopExpansion}
                     >
                       <Square className="w-4 h-4 mr-2" />
                       Parar
@@ -849,14 +928,29 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
                     </div>
                   )}
 
-                  <div className="pt-4 border-t">
-                    <Label>Ou digite o título diretamente:</Label>
-                    <Input
-                      value={data.title}
-                      onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
-                      placeholder="Título do roteiro"
-                      className="mt-1"
-                    />
+                  <div className="pt-4 border-t space-y-3">
+                    <div>
+                      <Label>Ou digite o título diretamente:</Label>
+                      <Input
+                        value={data.title}
+                        onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
+                        placeholder="Título do roteiro"
+                        className="mt-1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>Idioma do roteiro (opcional)</Label>
+                      <Input
+                        value={data.language}
+                        onChange={(e) => setData(prev => ({ ...prev, language: e.target.value }))}
+                        placeholder="Ex: Português, English, 中文, Español... (deixe vazio para detectar automaticamente)"
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Se não especificado, o idioma será detectado pelo título
+                      </p>
+                    </div>
                   </div>
                 </>
               )}
