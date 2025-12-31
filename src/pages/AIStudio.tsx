@@ -52,7 +52,10 @@ export default function AIStudio() {
     const titleFromUrl = searchParams.get('title');
     if (titleFromUrl) {
       setScriptTitle(titleFromUrl);
-      setSelectedScriptPrompt(`Crie um roteiro completo para um vídeo com o tema: ${titleFromUrl}`);
+      // Concatenar template existente + título ao invés de substituir
+      const existingTemplate = templates.find(t => t.type === 'script' && t.is_default)?.content || '';
+      const titlePrompt = `Tema do vídeo: ${titleFromUrl}`;
+      setSelectedScriptPrompt(existingTemplate ? `${existingTemplate}\n\n${titlePrompt}` : titlePrompt);
       // Clear the param after reading
       searchParams.delete('title');
       setSearchParams(searchParams, { replace: true });

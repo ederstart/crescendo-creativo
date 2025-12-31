@@ -42,9 +42,11 @@ export function MultiStepScriptWizard({
   onComplete,
   onFavoriteModel,
 }: MultiStepScriptWizardProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen'>(preferredModel as 'groq' | 'gemini' | 'qwen');
+const [currentStep, setCurrentStep] = useState(0);
+  const [model, setModel] = useState<'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama'>(preferredModel as 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama');
   const [loading, setLoading] = useState(false);
+  const [expandingAll, setExpandingAll] = useState(false);
+  const [expandProgress, setExpandProgress] = useState<{ current: number; total: number } | null>(null);
   const [userInput, setUserInput] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [data, setData] = useState<StepData>({
@@ -59,6 +61,7 @@ export function MultiStepScriptWizard({
   const getApiKey = () => {
     if (model === 'groq') return groqApiKey;
     if (model === 'gemini') return geminiApiKey;
+    // qwen, deepseek, llama all use openrouter
     return openrouterApiKey;
   };
 
@@ -154,7 +157,9 @@ Escreva o conteúdo expandido dessa parte do roteiro, com narrativa envolvente.`
         return { ...prev, expandedParts: newParts };
       });
       
-      toast.success(`Parte ${partIndex + 1} expandida!`);
+      if (!expandingAll) {
+        toast.success(`Parte ${partIndex + 1} expandida!`);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Erro ao expandir parte');
@@ -239,6 +244,41 @@ Mantenha a narrativa fluida entre as partes.`;
   const getParts = (): string[] => {
     if (!data.parts) return [];
     return data.parts.split('\n').filter(line => line.trim().length > 0);
+  };
+
+  const handleExpandAllSequentially = async () => {
+    const parts = getParts();
+    if (parts.length === 0) {
+      toast.error('Nenhuma parte para expandir');
+      return;
+    }
+
+    setExpandingAll(true);
+    setExpandProgress({ current: 0, total: parts.length });
+
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        // Skip if already expanded
+        if (data.expandedParts[i]) {
+          setExpandProgress({ current: i + 1, total: parts.length });
+          continue;
+        }
+
+        setExpandProgress({ current: i + 1, total: parts.length });
+        await handleExpandPart(parts[i], i);
+        
+        // Small delay between parts to avoid rate limits
+        if (i < parts.length - 1) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      toast.success('Todas as partes foram expandidas!');
+    } catch (error) {
+      toast.error('Erro ao expandir partes');
+    } finally {
+      setExpandingAll(false);
+      setExpandProgress(null);
+    }
   };
 
   const renderStepContent = () => {
@@ -348,6 +388,28 @@ Mantenha a narrativa fluida entre as partes.`;
               className="mt-1"
             />
           </div>
+
+          {/* Expand All Button */}
+          {parts.length > 0 && data.expandedParts.filter(Boolean).length < parts.length && (
+            <Button 
+              variant="secondary" 
+              onClick={handleExpandAllSequentially}
+              disabled={loading || expandingAll}
+              className="w-full"
+            >
+              {expandingAll ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Expandindo {expandProgress?.current} de {expandProgress?.total}...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Expandir Todas as Partes
+                </>
+              )}
+            </Button>
+          )}
 
           {data.expandedParts.filter(Boolean).length === parts.length && parts.length > 0 && (
             <Button 
@@ -482,7 +544,7 @@ Mantenha a narrativa fluida entre as partes.`;
             </Button>
           )}
         </div>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen')}>
+        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama')}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -490,6 +552,8 @@ Mantenha a narrativa fluida entre as partes.`;
             <SelectItem value="groq">Groq (Llama 3.3 70B)</SelectItem>
             <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
             <SelectItem value="qwen">Qwen3 Coder (OpenRouter)</SelectItem>
+            <SelectItem value="deepseek">DeepSeek R1 (OpenRouter)</SelectItem>
+            <SelectItem value="llama">Llama 3.3 (OpenRouter)</SelectItem>
           </SelectContent>
         </Select>
       </div>

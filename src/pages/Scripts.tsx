@@ -190,9 +190,9 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <Link to={`/scripts/${script.id}`} className="block group/title">
-                      <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors overflow-hidden">
-                        <span className="block whitespace-nowrap group-hover/title:animate-marquee">{script.title}</span>
+                    <Link to={`/scripts/${script.id}`} className="block group/title overflow-hidden">
+                      <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors">
+                        <span className="inline-block whitespace-nowrap group-hover/title:animate-marquee">{script.title}</span>
                       </h3>
                     </Link>
                     <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{script.content || 'Sem conteúdo ainda...'}</p>

@@ -199,30 +199,14 @@ export default function ScriptEditor() {
 
   return (
     <div className="min-h-screen animate-fade-in">
-      {/* Header */}
-      <header className="sticky top-0 z-10 glass border-b border-border pt-4">
+      {/* Header - apenas navegação e ações */}
+      <header className="sticky top-0 z-10 glass border-b border-border">
         <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" asChild>
-              <Link to="/scripts">
-                <ArrowLeft className="w-5 h-5" />
-              </Link>
-            </Button>
-            <div className="flex-1 min-w-0">
-              <Input
-                value={script.title}
-                onChange={(e) => setScript({ ...script, title: e.target.value })}
-                placeholder="Título do roteiro..."
-                className="text-xl font-display font-bold bg-transparent border-none p-0 h-auto focus-visible:ring-0 w-full"
-              />
-              {lastSaved && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-green-500" />
-                  Salvo às {lastSaved.toLocaleTimeString('pt-BR')}
-                </p>
-              )}
-            </div>
-          </div>
+          <Button variant="ghost" size="icon" asChild>
+            <Link to="/scripts">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+          </Button>
 
           <div className="flex items-center gap-3">
             <Select
@@ -269,6 +253,22 @@ export default function ScriptEditor() {
       <div className="flex">
         {/* Main Editor */}
         <div className="flex-1 p-8">
+          {/* Título abaixo do header */}
+          <div className="mb-6">
+            <Input
+              value={script.title}
+              onChange={(e) => setScript({ ...script, title: e.target.value })}
+              placeholder="Título do roteiro..."
+              className="text-2xl font-display font-bold bg-transparent border-none p-0 h-auto focus-visible:ring-0 w-full"
+            />
+            {lastSaved && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
+                <CheckCircle2 className="w-3 h-3 text-green-500" />
+                Salvo às {lastSaved.toLocaleTimeString('pt-BR')}
+              </p>
+            )}
+          </div>
+
           <Textarea
             value={script.content}
             onChange={(e) => setScript({ ...script, content: e.target.value })}
