@@ -4,12 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import JSZip from 'jszip';
+import { useStyleTemplates, StyleTemplate } from '@/hooks/useStyleTemplates';
 
 interface GeneratedImage {
   id: string;
@@ -62,6 +63,8 @@ export function ImageGallery({
   autoStartBatch,
   onAutoStartBatchComplete,
 }: ImageGalleryProps) {
+  const { templates: styleTemplates, createTemplate, setFavorite, favoriteTemplate } = useStyleTemplates();
+  
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
   const [styleTemplate, setStyleTemplate] = useState(initialStyleTemplate || '');
@@ -74,6 +77,8 @@ export function ImageGallery({
   const [savingStyle, setSavingStyle] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
   
   // Ref to control stopping batch generation
   const stopBatchRef = useRef(false);
@@ -86,6 +91,9 @@ export function ImageGallery({
   useEffect(() => {
     if (initialStyleTemplate !== undefined) {
       setStyleTemplate(initialStyleTemplate);
+    } else if (favoriteTemplate) {
+      // Carregar template favorito
+      setStyleTemplate(favoriteTemplate.content);
     }
   }, [initialStyleTemplate]);
 
@@ -130,6 +138,21 @@ export function ImageGallery({
     setSavingStyle(true);
     await onSaveStyleTemplate(styleTemplate);
     setSavingStyle(false);
+  };
+
+  const handleSaveAsNewTemplate = async () => {
+    if (!newTemplateName.trim() || !styleTemplate.trim()) {
+      toast.error('Preencha o nome e o conteúdo do template');
+      return;
+    }
+    await createTemplate(newTemplateName, styleTemplate);
+    setNewTemplateName('');
+    setShowSaveTemplateDialog(false);
+  };
+
+  const handleLoadTemplate = (template: StyleTemplate) => {
+    setStyleTemplate(template.content);
+    toast.success(`Template "${template.name}" carregado`);
   };
 
   // Group images by date for album-like experience
@@ -457,7 +480,29 @@ export function ImageGallery({
         </div>
 
         <div>
-          <Label>Template de Estilo</Label>
+          <div className="flex items-center justify-between mb-1">
+            <Label>Template de Estilo</Label>
+            {styleTemplates.length > 0 && (
+              <Select onValueChange={(id) => {
+                const t = styleTemplates.find(t => t.id === id);
+                if (t) handleLoadTemplate(t);
+              }}>
+                <SelectTrigger className="w-40 h-8 text-xs">
+                  <SelectValue placeholder="Carregar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {styleTemplates.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      <div className="flex items-center gap-1">
+                        {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                        <span>{t.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <div className="flex gap-2 mt-1">
             <Textarea
               value={styleTemplate}
@@ -466,16 +511,70 @@ export function ImageGallery({
               rows={2}
               className="flex-1"
             />
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={saveStyleTemplate}
-              disabled={savingStyle}
-              title="Salvar template de estilo"
-            >
-              {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={saveStyleTemplate}
+                disabled={savingStyle}
+                title="Salvar como padrão"
+              >
+                {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              </Button>
+              <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="icon" title="Salvar como novo template">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Salvar Template de Estilo</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Nome do Template</Label>
+                      <Input
+                        value={newTemplateName}
+                        onChange={e => setNewTemplateName(e.target.value)}
+                        placeholder="Ex: Estilo Cartoon"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label>Conteúdo</Label>
+                      <Textarea
+                        value={styleTemplate}
+                        readOnly
+                        rows={3}
+                        className="mt-1 text-sm"
+                      />
+                    </div>
+                    <Button onClick={handleSaveAsNewTemplate} className="w-full">
+                      <Save className="w-4 h-4 mr-2" />
+                      Salvar Template
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
+          {styleTemplates.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {styleTemplates.slice(0, 5).map(t => (
+                <Button
+                  key={t.id}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs px-2"
+                  onClick={() => handleLoadTemplate(t)}
+                >
+                  {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />}
+                  {t.name}
+                </Button>
+              ))}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground mt-1">
             O template será combinado com cada prompt gerado
           </p>

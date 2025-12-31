@@ -56,6 +56,7 @@ export type Database = {
           preferred_model_image: string | null
           preferred_model_scene: string | null
           preferred_model_script: string | null
+          preferred_voice: string | null
           style_template: string | null
           updated_at: string
           user_id: string
@@ -73,6 +74,7 @@ export type Database = {
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
+          preferred_voice?: string | null
           style_template?: string | null
           updated_at?: string
           user_id: string
@@ -90,6 +92,7 @@ export type Database = {
           preferred_model_image?: string | null
           preferred_model_scene?: string | null
           preferred_model_script?: string | null
+          preferred_voice?: string | null
           style_template?: string | null
           updated_at?: string
           user_id?: string
@@ -436,6 +439,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      style_templates: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          is_favorite: boolean | null
+          name: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          name: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          is_favorite?: boolean | null
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       subtitles: {
         Row: {

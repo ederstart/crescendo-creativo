@@ -14,6 +14,7 @@ interface AISettings {
   preferred_model_image?: string;
   preferred_claude_model?: string;
   style_template?: string;
+  preferred_voice?: string;
   // Campos legados (mantidos para compatibilidade)
   whisk_token?: string;
   whisk_session_id?: string;

@@ -13,8 +13,10 @@ import {
   Download, 
   Trash2, 
   RefreshCw, 
-  Loader2
+  Loader2,
+  Star
 } from 'lucide-react';
+import { useAISettings } from '@/hooks/useAISettings';
 import { toast } from 'sonner';
 import { useVoiceGenerator } from '@/hooks/useVoiceGenerator';
 import { generateSpeech, isModelLoaded, isModelLoading, getLoadProgress, type TTSVoice } from '@/lib/kokoroTTS';
@@ -62,9 +64,22 @@ export default function VoiceGenerator() {
     refetchAudios,
   } = useVoiceGenerator();
 
+  const { settings, saveSettings } = useAISettings();
+
   const [text, setText] = useState('');
   const [language, setLanguage] = useState('en-US');
   const [voiceId, setVoiceId] = useState<TTSVoice>('af_heart');
+  
+  // Carregar voz favorita se existir
+  useEffect(() => {
+    if (settings?.preferred_voice) {
+      const parts = settings.preferred_voice.split('|');
+      if (parts.length === 2) {
+        setLanguage(parts[0]);
+        setVoiceId(parts[1] as TTSVoice);
+      }
+    }
+  }, [settings?.preferred_voice]);
   const [loading, setLoading] = useState(false);
   const [modelLoadProgress, setModelLoadProgress] = useState(0);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
@@ -239,7 +254,19 @@ export default function VoiceGenerator() {
                 </div>
 
                 <div>
-                  <Label>Voz</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Voz</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        await saveSettings({ preferred_voice: `${language}|${voiceId}` });
+                      }}
+                      className={settings?.preferred_voice === `${language}|${voiceId}` ? 'text-yellow-500' : 'text-muted-foreground'}
+                    >
+                      <Star className={`w-4 h-4 ${settings?.preferred_voice === `${language}|${voiceId}` ? 'fill-yellow-500' : ''}`} />
+                    </Button>
+                  </div>
                   <Select value={voiceId} onValueChange={(v) => setVoiceId(v as TTSVoice)}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
