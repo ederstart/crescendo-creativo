@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp, Wand2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
@@ -34,16 +34,16 @@ interface StepData {
 
 const STEPS = [
   { id: 'title', label: 'Título', description: 'Defina o título do seu roteiro' },
-  { id: 'synopsis', label: 'Sinopse', description: 'Crie uma sinopse envolvente' },
+  { id: 'synopsis', label: 'Sinopse', description: 'Sinopse opcional para contexto' },
   { id: 'parts', label: 'Estrutura', description: 'Defina as partes da história' },
   { id: 'expand', label: 'Expansão', description: 'Expanda cada parte com detalhes' },
-  { id: 'final', label: 'Resultado', description: 'Roteiro final formatado' },
+  { id: 'save', label: 'Salvar', description: 'Revise e salve seu roteiro' },
 ];
 
 const DEFAULT_MULTISTEP_TEMPLATE = `Você é um roteirista profissional de vídeos para YouTube.
 
 DIRETRIZES GERAIS:
-- Linguagem: Português do Brasil, tom conversacional e envolvente
+- Linguagem: Siga o idioma do título/prompt do usuário
 - Estilo: Narrativo, dramático, com ganchos de retenção
 - Formato: Use descrições visuais detalhadas e diálogos quando apropriado
 - Objetivo: Máxima retenção do espectador
@@ -61,7 +61,9 @@ ESTRUTURA DE CADA CENA:
 1. Descrição do ambiente/cenário
 2. Ação principal com detalhes visuais
 3. Diálogos (se aplicável)
-4. Transição para próxima cena`;
+4. Transição para próxima cena
+
+IMPORTANTE: Responda SEMPRE no mesmo idioma do título/prompt do usuário.`;
 
 export function MultiStepScriptWizard({
   groqApiKey,
@@ -87,6 +89,7 @@ export function MultiStepScriptWizard({
   const [newTemplateName, setNewTemplateName] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
   const [expandedPartIndex, setExpandedPartIndex] = useState<number | null>(null);
+  const [scriptTitle, setScriptTitle] = useState('');
   const [data, setData] = useState<StepData>({
     title: '',
     synopsis: '',
@@ -103,6 +106,13 @@ export function MultiStepScriptWizard({
     }
   }, [templates]);
 
+  // Sync scriptTitle with data.title
+  useEffect(() => {
+    if (data.title && !scriptTitle) {
+      setScriptTitle(data.title);
+    }
+  }, [data.title, scriptTitle]);
+
   const getApiKey = () => {
     if (model === 'groq') return groqApiKey;
     if (model === 'gemini') return geminiApiKey;
@@ -112,16 +122,29 @@ export function MultiStepScriptWizard({
   const hasApiKey = !!getApiKey();
   const isFavorite = model === preferredModel;
 
+  // Detect language from title
+  const detectLanguage = (text: string): string => {
+    if (!text) return 'pt-BR';
+    // Check for Portuguese characters
+    if (/[àáâãéêíóôõúç]/i.test(text)) return 'pt-BR';
+    // Check if primarily Latin characters without Portuguese accents
+    if (/^[a-zA-Z0-9\s\-:!?,.']+$/.test(text.slice(0, 100))) return 'en';
+    return 'pt-BR';
+  };
+
   const generateWithAI = async (prompt: string, systemPrompt?: string): Promise<string> => {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error('API Key não configurada');
+
+    const language = detectLanguage(data.title);
 
     const { data: result, error } = await supabase.functions.invoke('generate-script', {
       body: { 
         prompt, 
         model, 
         apiKey,
-        systemPrompt: systemPrompt || customTemplate 
+        systemPrompt: systemPrompt || customTemplate,
+        language
       },
     });
 
@@ -157,37 +180,49 @@ export function MultiStepScriptWizard({
   };
 
   const handleGenerateSuggestions = async () => {
-    if (!userInput.trim()) {
-      toast.error('Digite uma descrição primeiro');
-      return;
-    }
-
     setLoading(true);
     setSuggestions([]);
+
+    const language = detectLanguage(data.title || userInput);
+    const langInstr = language === 'en' 
+      ? 'Respond in English.' 
+      : 'Responda em Português do Brasil.';
 
     try {
       let prompt = '';
       
       if (currentStep === 0) {
-        prompt = `Com base na seguinte ideia de vídeo/história: "${userInput}"
+        if (!userInput.trim()) {
+          toast.error('Digite uma descrição primeiro');
+          setLoading(false);
+          return;
+        }
+        prompt = `${langInstr}
+
+Based on this video/story idea: "${userInput}"
         
-Gere exatamente 3 sugestões de títulos criativos e chamativos, um por linha.
-Apenas os títulos, sem numeração ou explicação.`;
+Generate exactly 3 creative and catchy title suggestions, one per line.
+Only the titles, no numbering or explanation.`;
       } else if (currentStep === 1) {
-        prompt = `Título do vídeo/história: "${data.title}"
-Descrição adicional: "${userInput}"
+        prompt = `${langInstr}
 
-Gere exatamente 3 sinopses diferentes (cada uma com 2-3 frases) para este conteúdo.
-Separe cada sinopse com "---" em uma nova linha.
-Apenas as sinopses, sem numeração.`;
+Title: "${data.title}"
+Additional description: "${userInput}"
+
+Generate exactly 3 different synopses (each 2-3 sentences) for this content.
+Separate each synopsis with "---" on a new line.
+Only the synopses, no numbering.`;
       } else if (currentStep === 2) {
-        prompt = `Título: "${data.title}"
-Sinopse: "${data.synopsis}"
-Instruções adicionais: "${userInput}"
+        // Can generate with just title + template
+        prompt = `${langInstr}
 
-Sugira uma estrutura dividida em partes/capítulos para este roteiro.
-Liste cada parte com um título curto e uma breve descrição (1 linha).
-Formato: "Parte X: [Título] - [Descrição breve]"`;
+Title: "${data.title}"
+${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
+${userInput ? `Additional instructions: "${userInput}"` : ''}
+
+Suggest a structure divided into parts/chapters for this script.
+List each part with a short title and brief description (1 line).
+Format: "Part X: [Title] - [Brief description]"`;
       }
 
       const response = await generateWithAI(prompt);
@@ -210,38 +245,45 @@ Formato: "Parte X: [Título] - [Descrição breve]"`;
   const handleExpandPart = async (partDescription: string, partIndex: number) => {
     setLoading(true);
 
+    const language = detectLanguage(data.title);
+    const langInstr = language === 'en' 
+      ? 'Write ENTIRELY in English. Do NOT translate to any other language.' 
+      : 'Escreva em Português do Brasil.';
+
     try {
       const previousContext = data.expandedParts
         .slice(0, partIndex)
         .filter(Boolean)
-        .map((p, i) => `[PARTE ${i + 1} ANTERIOR]:\n${p.slice(0, 2000)}...`)
+        .map((p, i) => `[PART ${i + 1}]:\n${p.slice(0, 2000)}...`)
         .join('\n\n');
 
-      const prompt = `CONTEXTO DO ROTEIRO:
-Título: "${data.title}"
-Sinopse: "${data.synopsis}"
+      const prompt = `${langInstr}
 
-ESTRUTURA COMPLETA:
+SCRIPT CONTEXT:
+Title: "${data.title}"
+${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
+
+FULL STRUCTURE:
 ${data.parts}
 
-${previousContext ? `PARTES ANTERIORES (manter consistência):\n${previousContext}\n\n` : ''}
+${previousContext ? `PREVIOUS PARTS (maintain consistency):\n${previousContext}\n\n` : ''}
 
-TAREFA: Expanda a seguinte parte de forma EXTREMAMENTE DETALHADA:
+TASK: Expand the following part in EXTREME DETAIL:
 ${partDescription}
 
-INSTRUÇÕES: ${userInput || 'Máximo de detalhes, diálogos realistas e descrições visuais cinematográficas.'}
+INSTRUCTIONS: ${userInput || 'Maximum details, realistic dialogues, and cinematic visual descriptions.'}
 
-REQUISITOS:
-1. Escreva NO MÍNIMO 10.000 caracteres (~2000 palavras)
-2. Descrições visuais detalhadas (cenário, iluminação, expressões, câmera)
-3. Diálogos naturais
-4. Mesma linguagem e tom das partes anteriores
-5. Mesmos nomes de personagens
-6. Cronologia correta
-7. NÃO contradizer partes anteriores
-8. Ganchos de transição
+REQUIREMENTS:
+1. Write AT LEAST 10,000 characters (~2000 words)
+2. Detailed visual descriptions (setting, lighting, expressions, camera angles)
+3. Natural dialogues
+4. Same language and tone as previous parts
+5. Same character names
+6. Correct chronology
+7. DO NOT contradict previous parts
+8. Transition hooks
 
-Escreva APENAS o conteúdo expandido, sem cabeçalhos.`;
+Write ONLY the expanded content, no headers.`;
 
       const response = await generateWithAI(prompt);
       
@@ -262,40 +304,32 @@ Escreva APENAS o conteúdo expandido, sem cabeçalhos.`;
     }
   };
 
-  const handleGenerateFinal = async () => {
-    setLoading(true);
-
-    try {
-      const prompt = `Com base nas seguintes informações, crie um roteiro final completo e bem formatado:
-
-TÍTULO: ${data.title}
-
-SINOPSE: ${data.synopsis}
-
-ESTRUTURA:
-${data.parts}
-
-CONTEÚDO EXPANDIDO:
-${data.expandedParts.map((p, i) => `--- Parte ${i + 1} ---\n${p}`).join('\n\n')}
-
-Formate o roteiro final de forma profissional, unindo todas as partes em um texto coeso.
-Use marcações como # para títulos e ## para subtítulos.
-Mantenha a narrativa fluida entre as partes.`;
-
-      const response = await generateWithAI(prompt);
-      setData(prev => ({ ...prev, finalScript: response }));
-      setCurrentStep(4);
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Erro ao gerar roteiro final');
-    } finally {
-      setLoading(false);
+  const assembleFinalScript = () => {
+    // Combine all expanded parts into final script
+    const parts = getParts();
+    let finalText = `# ${data.title}\n\n`;
+    
+    if (data.synopsis) {
+      finalText += `*${data.synopsis}*\n\n---\n\n`;
     }
+    
+    parts.forEach((part, index) => {
+      finalText += `## ${part}\n\n`;
+      if (data.expandedParts[index]) {
+        finalText += data.expandedParts[index];
+        finalText += '\n\n---\n\n';
+      }
+    });
+
+    setData(prev => ({ ...prev, finalScript: finalText }));
+    setScriptTitle(data.title);
+    setCurrentStep(4);
   };
 
   const selectSuggestion = (suggestion: string) => {
     if (currentStep === 0) {
       setData(prev => ({ ...prev, title: suggestion }));
+      setScriptTitle(suggestion);
     } else if (currentStep === 1) {
       setData(prev => ({ ...prev, synopsis: suggestion }));
     } else if (currentStep === 2) {
@@ -310,10 +344,7 @@ Mantenha a narrativa fluida entre as partes.`;
       toast.error('Defina um título');
       return;
     }
-    if (currentStep === 1 && !data.synopsis) {
-      toast.error('Defina uma sinopse');
-      return;
-    }
+    // Step 1 (synopsis) is optional - can skip
     if (currentStep === 2 && !data.parts) {
       toast.error('Defina a estrutura');
       return;
@@ -333,6 +364,7 @@ Mantenha a narrativa fluida entre as partes.`;
     setData({ title: '', synopsis: '', parts: '', expandedParts: [], finalScript: '' });
     setSuggestions([]);
     setUserInput('');
+    setScriptTitle('');
   };
 
   const getParts = (): string[] => {
@@ -365,6 +397,10 @@ Mantenha a narrativa fluida entre as partes.`;
         }
       }
       toast.success('Todas as partes foram expandidas!');
+      // Auto advance to step 5 after all expanded
+      setTimeout(() => {
+        assembleFinalScript();
+      }, 500);
     } catch (error) {
       toast.error('Erro ao expandir partes');
     } finally {
@@ -373,8 +409,44 @@ Mantenha a narrativa fluida entre as partes.`;
     }
   };
 
+  const handleSaveScript = async () => {
+    if (!user) {
+      toast.error('Faça login para salvar');
+      return;
+    }
+
+    if (!scriptTitle.trim()) {
+      toast.error('Digite um título para o roteiro');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('scripts')
+        .insert({
+          title: scriptTitle,
+          content: data.finalScript,
+          user_id: user.id,
+          status: 'draft'
+        });
+
+      if (error) throw error;
+      toast.success('Roteiro salvo com sucesso!');
+    } catch (error) {
+      console.error('Error saving script:', error);
+      toast.error('Erro ao salvar roteiro');
+    }
+  };
+
+  const handleSaveAndAutomate = async () => {
+    await handleSaveScript();
+    onComplete(data.finalScript, scriptTitle);
+    navigate('/ai-studio');
+  };
+
   const parts = getParts();
   const allExpanded = parts.length > 0 && data.expandedParts.filter(Boolean).length === parts.length;
+  const totalChars = data.expandedParts.reduce((acc, part) => acc + (part?.length || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -492,34 +564,58 @@ Mantenha a narrativa fluida entre as partes.`;
       {/* Step Content */}
       <Card>
         <CardContent className="pt-6">
-          {/* Step 4: Final Result */}
+          {/* Step 4: Save/Final Result */}
           {currentStep === 4 ? (
             <div className="space-y-4">
-              <div className="p-4 bg-muted/50 rounded-lg border">
-                <h4 className="font-semibold">{data.title}</h4>
-                <p className="text-sm text-muted-foreground mt-1">{data.synopsis}</p>
+              {/* Title and Stats */}
+              <div className="space-y-3">
+                <div>
+                  <Label>Título do Roteiro</Label>
+                  <Input
+                    value={scriptTitle}
+                    onChange={(e) => setScriptTitle(e.target.value)}
+                    placeholder="Título do roteiro"
+                    className="mt-1 text-lg font-medium"
+                  />
+                </div>
+                
+                <div className="flex items-center gap-4 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+                  <div>
+                    <span className="font-medium text-foreground">{data.finalScript.length.toLocaleString('pt-BR')}</span> caracteres
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">{parts.length}</span> partes
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">~{Math.ceil(data.finalScript.length / 1500)}</span> min leitura
+                  </div>
+                </div>
               </div>
               
-              <Textarea
-                value={data.finalScript}
-                onChange={(e) => setData(prev => ({ ...prev, finalScript: e.target.value }))}
-                rows={15}
-                className="font-mono text-sm"
-              />
+              <div>
+                <Label>Roteiro Final</Label>
+                <ScrollArea className="h-[400px] mt-1">
+                  <Textarea
+                    value={data.finalScript}
+                    onChange={(e) => setData(prev => ({ ...prev, finalScript: e.target.value }))}
+                    className="font-mono text-sm min-h-[380px]"
+                  />
+                </ScrollArea>
+              </div>
               
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={resetWizard}>
                   <RotateCcw className="w-4 h-4 mr-2" />Recomeçar
                 </Button>
+                <Button variant="secondary" onClick={handleSaveScript} className="flex-1">
+                  <Save className="w-4 h-4 mr-2" />Apenas Salvar
+                </Button>
                 <Button 
                   variant="fire" 
-                  onClick={() => {
-                    onComplete(data.finalScript, data.title);
-                    navigate('/ai-studio');
-                  }}
+                  onClick={handleSaveAndAutomate}
                   className="flex-1"
                 >
-                  <Check className="w-4 h-4 mr-2" />Salvar e Automatizar
+                  <Zap className="w-4 h-4 mr-2" />Salvar e Automatizar
                 </Button>
               </div>
             </div>
@@ -528,8 +624,24 @@ Mantenha a narrativa fluida entre as partes.`;
             <div className="space-y-4">
               <div className="p-3 bg-muted/50 rounded-lg border text-sm">
                 <strong>{data.title}</strong>
-                <p className="text-muted-foreground">{data.synopsis}</p>
+                {data.synopsis && <p className="text-muted-foreground">{data.synopsis}</p>}
               </div>
+
+              {/* Progress bar when expanding */}
+              {expandProgress && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Expandindo partes...</span>
+                    <span>{expandProgress.current} de {expandProgress.total}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${(expandProgress.current / expandProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {parts.map((part, index) => (
@@ -561,9 +673,9 @@ Mantenha a narrativa fluida entre as partes.`;
                               size="sm"
                               variant="secondary"
                               onClick={() => handleExpandPart(part, index)}
-                              disabled={loading}
+                              disabled={loading || expandingAll}
                             >
-                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                              {loading && !expandingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
                               Expandir
                             </Button>
                           )}
@@ -599,6 +711,13 @@ Mantenha a narrativa fluida entre as partes.`;
                   </Card>
                 ))}
               </div>
+
+              {/* Stats */}
+              {totalChars > 0 && (
+                <div className="text-center text-sm text-muted-foreground bg-muted/30 rounded-lg p-2">
+                  Total expandido: <span className="font-medium text-foreground">{totalChars.toLocaleString('pt-BR')}</span> caracteres
+                </div>
+              )}
 
               <div className="space-y-3 pt-4 border-t">
                 <div>
@@ -636,12 +755,11 @@ Mantenha a narrativa fluida entre as partes.`;
                 {allExpanded && (
                   <Button 
                     variant="fire" 
-                    onClick={handleGenerateFinal}
-                    disabled={loading}
+                    onClick={assembleFinalScript}
                     className="w-full"
                   >
-                    {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
-                    Gerar Roteiro Final
+                    <ChevronRight className="w-4 h-4 mr-2" />
+                    Continuar para Salvar
                   </Button>
                 )}
               </div>
@@ -649,80 +767,190 @@ Mantenha a narrativa fluida entre as partes.`;
           ) : (
             /* Steps 0-2: Title, Synopsis, Structure */
             <div className="space-y-4">
-              <div>
-                <Label>{STEPS[currentStep].description}</Label>
-                <Textarea
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder={
-                    currentStep === 0 
-                      ? 'Descreva sobre o que será seu vídeo/história...'
-                      : currentStep === 1
-                      ? 'Adicione detalhes para a sinopse...'
-                      : 'Instruções para a estrutura...'
-                  }
-                  rows={3}
-                  className="mt-1"
-                />
-              </div>
+              {/* Step 0: Title */}
+              {currentStep === 0 && (
+                <>
+                  <div>
+                    <Label>Descreva sua ideia (opcional)</Label>
+                    <Textarea
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder="Descreva sobre o que será seu vídeo/história para gerar sugestões de títulos..."
+                      rows={3}
+                      className="mt-1"
+                    />
+                  </div>
 
-              <Button
-                onClick={handleGenerateSuggestions}
-                disabled={loading || !hasApiKey}
-                variant="secondary"
-                className="w-full"
-              >
-                {loading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
-                ) : (
-                  <><Sparkles className="w-4 h-4 mr-2" />Gerar Sugestões</>
-                )}
-              </Button>
+                  <Button
+                    onClick={handleGenerateSuggestions}
+                    disabled={loading || !hasApiKey || !userInput.trim()}
+                    variant="secondary"
+                    className="w-full"
+                  >
+                    {loading ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                    ) : (
+                      <><Wand2 className="w-4 h-4 mr-2" />Gerar Sugestões de Título</>
+                    )}
+                  </Button>
 
-              {suggestions.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Escolha uma opção:</Label>
-                  {suggestions.map((suggestion, index) => (
-                    <Card 
-                      key={index} 
-                      className="cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors"
-                      onClick={() => selectSuggestion(suggestion)}
-                    >
-                      <CardContent className="py-3">
-                        <p className="text-sm">{suggestion}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                  {suggestions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Escolha uma opção:</Label>
+                      {suggestions.map((suggestion, index) => (
+                        <Card 
+                          key={index} 
+                          className="cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                          onClick={() => selectSuggestion(suggestion)}
+                        >
+                          <CardContent className="py-3">
+                            <p className="text-sm">{suggestion}</p>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t">
+                    <Label>Ou digite o título diretamente:</Label>
+                    <Input
+                      value={data.title}
+                      onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Título do roteiro"
+                      className="mt-1"
+                    />
+                  </div>
+                </>
               )}
 
-              <div className="pt-4 border-t">
-                <Label>Ou digite diretamente:</Label>
-                {currentStep === 0 ? (
-                  <Input
-                    value={data.title}
-                    onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="Título do roteiro"
-                    className="mt-1"
-                  />
-                ) : currentStep === 1 ? (
-                  <Textarea
-                    value={data.synopsis}
-                    onChange={(e) => setData(prev => ({ ...prev, synopsis: e.target.value }))}
-                    placeholder="Sinopse do roteiro"
-                    rows={3}
-                    className="mt-1"
-                  />
-                ) : (
-                  <Textarea
-                    value={data.parts}
-                    onChange={(e) => setData(prev => ({ ...prev, parts: e.target.value }))}
-                    placeholder="Parte 1: Introdução&#10;Parte 2: Desenvolvimento&#10;Parte 3: Clímax&#10;Parte 4: Conclusão"
-                    rows={5}
-                    className="mt-1"
-                  />
-                )}
-              </div>
+              {/* Step 1: Synopsis (Optional) */}
+              {currentStep === 1 && (
+                <>
+                  <div className="p-3 bg-muted/50 rounded-lg border text-sm">
+                    <span className="text-muted-foreground">Título:</span> <strong>{data.title}</strong>
+                  </div>
+
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                      💡 A sinopse é <strong>opcional</strong>. Você pode pular esta etapa e ir direto para a estrutura.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label>Adicione detalhes para a sinopse (opcional)</Label>
+                    <Textarea
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder="Descreva elementos adicionais para gerar sugestões de sinopse..."
+                      rows={3}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleGenerateSuggestions}
+                    disabled={loading || !hasApiKey}
+                    variant="secondary"
+                    className="w-full"
+                  >
+                    {loading ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                    ) : (
+                      <><Wand2 className="w-4 h-4 mr-2" />Gerar Sugestões de Sinopse</>
+                    )}
+                  </Button>
+
+                  {suggestions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Escolha uma opção:</Label>
+                      {suggestions.map((suggestion, index) => (
+                        <Card 
+                          key={index} 
+                          className="cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                          onClick={() => selectSuggestion(suggestion)}
+                        >
+                          <CardContent className="py-3">
+                            <p className="text-sm">{suggestion}</p>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t">
+                    <Label>Ou digite a sinopse diretamente (opcional):</Label>
+                    <Textarea
+                      value={data.synopsis}
+                      onChange={(e) => setData(prev => ({ ...prev, synopsis: e.target.value }))}
+                      placeholder="Sinopse do roteiro (deixe vazio para pular)"
+                      rows={3}
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Step 2: Structure */}
+              {currentStep === 2 && (
+                <>
+                  <div className="p-3 bg-muted/50 rounded-lg border text-sm space-y-1">
+                    <div><span className="text-muted-foreground">Título:</span> <strong>{data.title}</strong></div>
+                    {data.synopsis && <div><span className="text-muted-foreground">Sinopse:</span> {data.synopsis}</div>}
+                  </div>
+
+                  <div>
+                    <Label>Instruções adicionais (opcional)</Label>
+                    <Textarea
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder="Ex: Divida em 5 partes, foque no drama, inclua um plot twist..."
+                      rows={2}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleGenerateSuggestions}
+                    disabled={loading || !hasApiKey}
+                    variant="secondary"
+                    className="w-full"
+                  >
+                    {loading ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4 mr-2" />Gerar Estrutura</>
+                    )}
+                  </Button>
+
+                  {suggestions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Estrutura sugerida:</Label>
+                      {suggestions.map((suggestion, index) => (
+                        <Card 
+                          key={index} 
+                          className="cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                          onClick={() => selectSuggestion(suggestion)}
+                        >
+                          <CardContent className="py-3">
+                            <pre className="text-sm whitespace-pre-wrap font-sans">{suggestion}</pre>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t">
+                    <Label>Ou digite a estrutura diretamente:</Label>
+                    <Textarea
+                      value={data.parts}
+                      onChange={(e) => setData(prev => ({ ...prev, parts: e.target.value }))}
+                      placeholder="Parte 1: Introdução&#10;Parte 2: Desenvolvimento&#10;Parte 3: Clímax&#10;Parte 4: Conclusão"
+                      rows={5}
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
         </CardContent>
@@ -741,7 +969,8 @@ Mantenha a narrativa fluida entre as partes.`;
           
           {currentStep < 3 && (
             <Button onClick={nextStep}>
-              Próximo<ChevronRight className="w-4 h-4 ml-2" />
+              {currentStep === 1 && !data.synopsis ? 'Pular' : 'Próximo'}
+              <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
         </div>
