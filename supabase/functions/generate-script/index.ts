@@ -28,19 +28,36 @@ serve(async (req) => {
     }
 
     // Detect language from prompt or use specified language
-    const detectedLang = language || (
-      /[a-zA-Z]/.test(prompt.slice(0, 100)) && !/[àáâãéêíóôõúç]/i.test(prompt.slice(0, 100))
-        ? 'en'
-        : 'pt-BR'
-    );
+    // Priority: explicit language param > detection from prompt
+    let detectedLang = language;
+    
+    if (!detectedLang) {
+      // Check for Portuguese characters/words
+      const hasPtChars = /[àáâãéêíóôõúç]/i.test(prompt);
+      const hasPtWords = /\b(para|como|que|uma|com|não|mais|você|este|esta|fazer|criar|sobre)\b/i.test(prompt);
+      
+      // Check for English patterns
+      const hasEnWords = /\b(the|and|for|that|with|from|this|what|how|create|make|about|write)\b/i.test(prompt);
+      
+      if (hasPtChars || hasPtWords) {
+        detectedLang = 'pt-BR';
+      } else if (hasEnWords) {
+        detectedLang = 'en';
+      } else {
+        // Default to Portuguese
+        detectedLang = 'pt-BR';
+      }
+    }
     
     const langInstruction = detectedLang === 'en' 
-      ? 'IMPORTANT: Write your response ENTIRELY in English. Do not translate to Portuguese.'
-      : 'IMPORTANTE: Escreva sua resposta em Português do Brasil.';
+      ? 'CRITICAL: Write your ENTIRE response in English. Do NOT translate to Portuguese or any other language. Stay in English throughout.'
+      : detectedLang === 'pt-BR'
+      ? 'CRÍTICO: Escreva sua resposta INTEIRAMENTE em Português do Brasil. NÃO traduza para outro idioma.'
+      : `CRITICAL: Write your entire response in the same language as the user's prompt. Maintain language consistency throughout.`;
 
     const defaultSystemPrompt = systemPrompt 
-      ? `${systemPrompt}\n\n${langInstruction}`
-      : `Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.\n\n${langInstruction}`;
+      ? `${langInstruction}\n\n${systemPrompt}`
+      : `${langInstruction}\n\nVocê é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.`;
 
     if (model === 'groq') {
       // Groq API
