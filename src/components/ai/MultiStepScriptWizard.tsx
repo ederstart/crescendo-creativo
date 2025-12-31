@@ -220,9 +220,12 @@ Do NOT add any personal comments or observations. Output ONLY the structure.
 
 Title: "${data.title}"
 ${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
-${userInput ? `Additional instructions: "${userInput}"` : ''}
+${userInput ? `User instructions (FOLLOW THIS for number of parts and other details): "${userInput}"` : ''}
 
-Generate a detailed structure divided into 10-20 parts/chapters.
+Based on the user instructions above (if provided), generate the story structure.
+If the user specified a number of parts, use EXACTLY that number.
+If no number was specified, use a reasonable amount based on the story complexity.
+
 Each part MUST be a scene/moment of the story, NOT a meta-comment.
 Format: "Part X: [Scene Title] - [Brief scene description]"
 
@@ -371,19 +374,12 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
   };
 
   const assembleFinalScript = () => {
-    // Combine all expanded parts into final script - NO markdown
+    // Combine ONLY expanded parts into final script - no original parts, no title (title goes to separate field)
     const parts = getParts();
-    let finalText = `${data.title.toUpperCase()}\n\n`;
+    let finalText = '';
     
-    if (data.synopsis) {
-      finalText += `${data.synopsis}\n\n`;
-    }
-    
+    // Only include expanded content - NOT the original part descriptions
     parts.forEach((part, index) => {
-      // Extract just the part name, removing "Part X:" prefix
-      const partName = part.replace(/^(Part|Parte)\s*\d+:\s*/i, '').trim();
-      finalText += `${partName.toUpperCase()}\n\n`;
-      
       if (data.expandedParts[index]) {
         // Clean any remaining markdown from expanded content
         let content = data.expandedParts[index]
@@ -394,10 +390,13 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
           .replace(/^\/+/gm, '')
           .trim();
         
-        finalText += content + '\n\n';
+        if (content) {
+          finalText += content + '\n\n';
+        }
       }
     });
 
+    // Set script content (only expanded text) and title separately
     setData(prev => ({ ...prev, finalScript: finalText.trim() }));
     setScriptTitle(data.title);
     setCurrentStep(4);
