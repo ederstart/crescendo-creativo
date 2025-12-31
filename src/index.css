@@ -159,8 +159,8 @@
 }
 
 @keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(calc(-100% + 100%)); }
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-100%); }
 }
 
 .animate-fade-in {
@@ -175,10 +175,18 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-.group\/title:hover .animate-marquee {
-  animation: marquee 4s linear;
+.marquee-container {
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
 }
 
-.animate-marquee {
-  animation: none;
+.marquee-text {
+  display: inline-block;
+  white-space: nowrap;
+  padding-right: 50px;
+}
+
+.marquee-container:hover .marquee-text {
+  animation: marquee 5s linear infinite;
 }

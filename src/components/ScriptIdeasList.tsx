@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Plus, 
@@ -29,6 +30,7 @@ export function ScriptIdeasList() {
   const [ideas, setIdeas] = useState<ScriptIdea[]>([]);
   const [newIdea, setNewIdea] = useState('');
   const [loading, setLoading] = useState(true);
+  const [batchMode, setBatchMode] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -56,22 +58,49 @@ export function ScriptIdeasList() {
   const addIdea = async () => {
     if (!newIdea.trim() || !user) return;
 
-    const { data, error } = await supabase
-      .from('script_ideas')
-      .insert({
+    // Check if batch mode - multiple lines
+    const lines = newIdea.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    if (lines.length > 1) {
+      // Batch insert
+      const inserts = lines.map((title, index) => ({
         user_id: user.id,
-        title: newIdea.trim(),
-        priority: ideas.length,
-      })
-      .select()
-      .single();
+        title,
+        priority: ideas.length + index,
+      }));
 
-    if (error) {
-      toast.error('Erro ao adicionar ideia');
+      const { data, error } = await supabase
+        .from('script_ideas')
+        .insert(inserts)
+        .select();
+
+      if (error) {
+        toast.error('Erro ao adicionar ideias');
+      } else {
+        setIdeas(prev => [...(data || []).reverse(), ...prev]);
+        setNewIdea('');
+        setBatchMode(false);
+        toast.success(`${lines.length} ideias adicionadas!`);
+      }
     } else {
-      setIdeas(prev => [data, ...prev]);
-      setNewIdea('');
-      toast.success('Ideia adicionada!');
+      // Single insert
+      const { data, error } = await supabase
+        .from('script_ideas')
+        .insert({
+          user_id: user.id,
+          title: newIdea.trim(),
+          priority: ideas.length,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        toast.error('Erro ao adicionar ideia');
+      } else {
+        setIdeas(prev => [data, ...prev]);
+        setNewIdea('');
+        toast.success('Ideia adicionada!');
+      }
     }
   };
 
@@ -143,18 +172,50 @@ export function ScriptIdeasList() {
   return (
     <div className="space-y-6">
       {/* Add new idea */}
-      <div className="flex gap-2">
-        <Input
-          value={newIdea}
-          onChange={(e) => setNewIdea(e.target.value)}
-          placeholder="Nova ideia de roteiro..."
-          onKeyDown={(e) => e.key === 'Enter' && addIdea()}
-          className="flex-1"
-        />
-        <Button onClick={addIdea} variant="fire">
-          <Plus className="w-4 h-4 mr-2" />
-          Adicionar
-        </Button>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Button
+            variant={batchMode ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setBatchMode(!batchMode)}
+          >
+            {batchMode ? "Modo Único" : "Adicionar em Lote"}
+          </Button>
+        </div>
+        {batchMode ? (
+          <div className="space-y-2">
+            <Textarea
+              value={newIdea}
+              onChange={(e) => setNewIdea(e.target.value)}
+              placeholder="Cole várias ideias (uma por linha)..."
+              rows={5}
+              className="w-full"
+            />
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground">
+                {newIdea.split('\n').filter(l => l.trim()).length} ideias
+              </span>
+              <Button onClick={addIdea} variant="fire">
+                <Plus className="w-4 h-4 mr-2" />
+                Adicionar Todas
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Input
+              value={newIdea}
+              onChange={(e) => setNewIdea(e.target.value)}
+              placeholder="Nova ideia de roteiro..."
+              onKeyDown={(e) => e.key === 'Enter' && addIdea()}
+              className="flex-1"
+            />
+            <Button onClick={addIdea} variant="fire">
+              <Plus className="w-4 h-4 mr-2" />
+              Adicionar
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Ideas list */}
