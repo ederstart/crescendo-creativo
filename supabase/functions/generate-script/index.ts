@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, model, apiKey, systemPrompt, attachedContent } = await req.json();
+    const { prompt, model, apiKey, systemPrompt, attachedContent, language } = await req.json();
     
     if (!prompt || !apiKey) {
       throw new Error('Prompt and API key are required');
@@ -27,7 +27,20 @@ serve(async (req) => {
       fullPrompt = `Conteúdo de referência:\n${attachedContent}\n\n${prompt}`;
     }
 
-    const defaultSystemPrompt = systemPrompt || 'Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.';
+    // Detect language from prompt or use specified language
+    const detectedLang = language || (
+      /[a-zA-Z]/.test(prompt.slice(0, 100)) && !/[àáâãéêíóôõúç]/i.test(prompt.slice(0, 100))
+        ? 'en'
+        : 'pt-BR'
+    );
+    
+    const langInstruction = detectedLang === 'en' 
+      ? 'IMPORTANT: Write your response ENTIRELY in English. Do not translate to Portuguese.'
+      : 'IMPORTANTE: Escreva sua resposta em Português do Brasil.';
+
+    const defaultSystemPrompt = systemPrompt 
+      ? `${systemPrompt}\n\n${langInstruction}`
+      : `Você é um roteirista profissional de vídeos para YouTube. Crie roteiros envolventes, bem estruturados e otimizados para retenção.\n\n${langInstruction}`;
 
     if (model === 'groq') {
       // Groq API

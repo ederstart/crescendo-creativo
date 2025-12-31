@@ -13,21 +13,90 @@ import { useAuth } from '@/hooks/useAuth';
 interface Script { id: string; title: string; content: string; }
 interface Subtitle { id: string; title: string; content: string; source_script_ids: string[]; created_at: string; }
 
-// Split text at word boundaries, max chars per segment
-function splitTextSafely(text: string, maxChars: number): string[] {
-  const parts: string[] = [];
-  let currentIndex = 0;
-  while (currentIndex < text.length) {
-    let endIndex = Math.min(currentIndex + maxChars, text.length);
-    if (endIndex < text.length) {
-      const lastSpace = text.lastIndexOf(' ', endIndex);
-      if (lastSpace > currentIndex) endIndex = lastSpace;
+// Split text into complete sentences
+function splitIntoSentences(text: string): string[] {
+  // First normalize the text - remove extra whitespace and normalize line breaks
+  const normalized = text.replace(/\r\n/g, '\n').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  
+  // Split by sentence-ending punctuation followed by space or end
+  // This regex captures complete sentences ending in . ! or ?
+  const sentences: string[] = [];
+  let current = '';
+  
+  for (let i = 0; i < normalized.length; i++) {
+    current += normalized[i];
+    
+    // Check if this is end of sentence
+    if ('.!?'.includes(normalized[i])) {
+      const nextChar = normalized[i + 1];
+      // If next char is space, quote, or end of string, it's end of sentence
+      if (!nextChar || nextChar === ' ' || nextChar === '"' || nextChar === "'") {
+        const sentence = current.trim();
+        if (sentence.length > 0) {
+          sentences.push(sentence);
+        }
+        current = '';
+      }
     }
-    const part = text.substring(currentIndex, endIndex).trim();
-    if (part) parts.push(part);
-    currentIndex = endIndex + 1;
   }
-  return parts;
+  
+  // Don't forget remaining text
+  if (current.trim().length > 0) {
+    sentences.push(current.trim());
+  }
+  
+  return sentences;
+}
+
+// Group sentences to fit within max chars, respecting sentence boundaries
+function groupSentences(sentences: string[], maxChars: number): string[] {
+  const groups: string[] = [];
+  let currentGroup = '';
+  
+  for (const sentence of sentences) {
+    // If single sentence is too long, we need to split it by words
+    if (sentence.length > maxChars) {
+      // First, save current group if exists
+      if (currentGroup.trim()) {
+        groups.push(currentGroup.trim());
+        currentGroup = '';
+      }
+      
+      // Split long sentence by words
+      const words = sentence.split(' ');
+      let chunk = '';
+      for (const word of words) {
+        if ((chunk + ' ' + word).trim().length <= maxChars) {
+          chunk = (chunk + ' ' + word).trim();
+        } else {
+          if (chunk) groups.push(chunk);
+          chunk = word;
+        }
+      }
+      if (chunk) groups.push(chunk);
+      continue;
+    }
+    
+    // Check if adding this sentence would exceed limit
+    const testGroup = currentGroup ? currentGroup + ' ' + sentence : sentence;
+    
+    if (testGroup.length <= maxChars) {
+      currentGroup = testGroup;
+    } else {
+      // Save current group and start new one
+      if (currentGroup.trim()) {
+        groups.push(currentGroup.trim());
+      }
+      currentGroup = sentence;
+    }
+  }
+  
+  // Don't forget the last group
+  if (currentGroup.trim()) {
+    groups.push(currentGroup.trim());
+  }
+  
+  return groups;
 }
 
 function formatTime(seconds: number): string {
@@ -37,9 +106,11 @@ function formatTime(seconds: number): string {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},000`;
 }
 
-// Generate SRT with 500 chars max, 30s display, 20s pause between
+// Generate SRT respecting sentence boundaries
 function generateSRT(text: string, charsPerSubtitle = 500, displaySeconds = 30, pauseSeconds = 20): string {
-  const parts = splitTextSafely(text, charsPerSubtitle);
+  const sentences = splitIntoSentences(text);
+  const parts = groupSentences(sentences, charsPerSubtitle);
+  
   const srtLines: string[] = [];
   parts.forEach((part, index) => {
     const startTime = index * (displaySeconds + pauseSeconds);

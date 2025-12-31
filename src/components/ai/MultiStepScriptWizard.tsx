@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { usePromptTemplates } from '@/hooks/usePromptTemplates';
+import { useAuth } from '@/hooks/useAuth';
 
 interface MultiStepScriptWizardProps {
   groqApiKey?: string;
@@ -27,12 +30,36 @@ interface StepData {
 }
 
 const STEPS = [
+  { id: 'template', label: 'Template', description: 'Configure o template de geração' },
   { id: 'title', label: 'Título', description: 'Defina o título do seu roteiro' },
   { id: 'synopsis', label: 'Sinopse', description: 'Crie uma sinopse envolvente' },
   { id: 'parts', label: 'Estrutura', description: 'Defina as partes da história' },
   { id: 'expand', label: 'Expansão', description: 'Expanda cada parte da história' },
   { id: 'final', label: 'Resultado', description: 'Roteiro final formatado' },
 ];
+
+const DEFAULT_MULTISTEP_TEMPLATE = `Você é um roteirista profissional de vídeos para YouTube.
+
+DIRETRIZES GERAIS:
+- Linguagem: Português do Brasil, tom conversacional e envolvente
+- Estilo: Narrativo, dramático, com ganchos de retenção
+- Formato: Use descrições visuais detalhadas e diálogos quando apropriado
+- Objetivo: Máxima retenção do espectador
+
+REGRAS DE EXPANSÃO:
+- Cada parte deve ter NO MÍNIMO 10.000 caracteres
+- Inclua descrições visuais detalhadas (cenário, iluminação, ângulos de câmera)
+- Adicione diálogos realistas quando apropriado
+- Use ganchos narrativos para manter interesse
+- Mantenha consistência de personagens, nomes e eventos
+- Siga estritamente a cronologia da história
+- Não invente informações contraditórias com partes anteriores
+
+ESTRUTURA DE CADA CENA:
+1. Descrição do ambiente/cenário
+2. Ação principal com detalhes visuais
+3. Diálogos (se aplicável)
+4. Transição para próxima cena`;
 
 export function MultiStepScriptWizard({
   groqApiKey,
@@ -42,13 +69,19 @@ export function MultiStepScriptWizard({
   onComplete,
   onFavoriteModel,
 }: MultiStepScriptWizardProps) {
-const [currentStep, setCurrentStep] = useState(0);
+  const { user } = useAuth();
+  const { templates, createTemplate, loading: templatesLoading } = usePromptTemplates('script');
+  
+  const [currentStep, setCurrentStep] = useState(0);
   const [model, setModel] = useState<'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama'>(preferredModel as 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama');
   const [loading, setLoading] = useState(false);
   const [expandingAll, setExpandingAll] = useState(false);
   const [expandProgress, setExpandProgress] = useState<{ current: number; total: number } | null>(null);
   const [userInput, setUserInput] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [customTemplate, setCustomTemplate] = useState(DEFAULT_MULTISTEP_TEMPLATE);
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
   const [data, setData] = useState<StepData>({
     title: '',
     synopsis: '',
@@ -57,6 +90,14 @@ const [currentStep, setCurrentStep] = useState(0);
     finalScript: '',
   });
   const [currentPartIndex, setCurrentPartIndex] = useState(0);
+
+  // Load default template on mount
+  useEffect(() => {
+    const defaultTemplate = templates.find(t => t.is_default);
+    if (defaultTemplate) {
+      setCustomTemplate(defaultTemplate.content);
+    }
+  }, [templates]);
 
   const getApiKey = () => {
     if (model === 'groq') return groqApiKey;
@@ -68,18 +109,48 @@ const [currentStep, setCurrentStep] = useState(0);
   const hasApiKey = !!getApiKey();
   const isFavorite = model === preferredModel;
 
-  const generateWithAI = async (prompt: string): Promise<string> => {
+  const generateWithAI = async (prompt: string, systemPrompt?: string): Promise<string> => {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error('API Key não configurada');
 
     const { data: result, error } = await supabase.functions.invoke('generate-script', {
-      body: { prompt, model, apiKey },
+      body: { 
+        prompt, 
+        model, 
+        apiKey,
+        systemPrompt: systemPrompt || customTemplate 
+      },
     });
 
     if (error) throw error;
     if (result.error) throw new Error(result.error);
 
     return result.generatedText;
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!newTemplateName.trim()) {
+      toast.error('Digite um nome para o template');
+      return;
+    }
+    
+    await createTemplate({
+      name: newTemplateName,
+      type: 'script',
+      content: customTemplate,
+      is_default: false,
+    });
+    
+    setShowSaveTemplateDialog(false);
+    setNewTemplateName('');
+  };
+
+  const loadTemplate = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      setCustomTemplate(template.content);
+      toast.success(`Template "${template.name}" carregado`);
+    }
   };
 
   const handleGenerateSuggestions = async () => {
@@ -94,19 +165,19 @@ const [currentStep, setCurrentStep] = useState(0);
     try {
       let prompt = '';
       
-      if (currentStep === 0) {
+      if (currentStep === 1) {
         prompt = `Com base na seguinte ideia de vídeo/história: "${userInput}"
         
 Gere exatamente 3 sugestões de títulos criativos e chamativos, um por linha.
 Apenas os títulos, sem numeração ou explicação.`;
-      } else if (currentStep === 1) {
+      } else if (currentStep === 2) {
         prompt = `Título do vídeo/história: "${data.title}"
 Descrição adicional: "${userInput}"
 
 Gere exatamente 3 sinopses diferentes (cada uma com 2-3 frases) para este conteúdo.
 Separe cada sinopse com "---" em uma nova linha.
 Apenas as sinopses, sem numeração.`;
-      } else if (currentStep === 2) {
+      } else if (currentStep === 3) {
         prompt = `Título: "${data.title}"
 Sinopse: "${data.synopsis}"
 Instruções adicionais: "${userInput}"
@@ -118,9 +189,9 @@ Formato: "Parte X: [Título] - [Descrição breve]"`;
 
       const response = await generateWithAI(prompt);
       
-      if (currentStep === 1) {
+      if (currentStep === 2) {
         setSuggestions(response.split('---').map(s => s.trim()).filter(Boolean));
-      } else if (currentStep === 2) {
+      } else if (currentStep === 3) {
         setSuggestions([response]);
       } else {
         setSuggestions(response.split('\n').map(s => s.trim()).filter(Boolean));
@@ -137,17 +208,39 @@ Formato: "Parte X: [Título] - [Descrição breve]"`;
     setLoading(true);
 
     try {
-      const prompt = `Título: "${data.title}"
+      // Build context from previously expanded parts
+      const previousContext = data.expandedParts
+        .slice(0, partIndex)
+        .filter(Boolean)
+        .map((p, i) => `[PARTE ${i + 1} ANTERIOR - REFERÊNCIA]:\n${p.slice(0, 2000)}...`)
+        .join('\n\n');
+
+      const prompt = `CONTEXTO DO ROTEIRO:
+Título: "${data.title}"
 Sinopse: "${data.synopsis}"
-Estrutura completa: 
+
+ESTRUTURA COMPLETA DO ROTEIRO:
 ${data.parts}
 
-Expanda APENAS a seguinte parte em um texto detalhado para roteiro:
+${previousContext ? `PARTES ANTERIORES (para manter consistência de personagens/eventos):\n${previousContext}\n\n` : ''}
+
+TAREFA: Expanda a seguinte parte de forma EXTREMAMENTE DETALHADA:
 ${partDescription}
 
-Instruções: ${userInput || 'Expanda com detalhes, diálogos e descrições visuais'}
+INSTRUÇÕES ESPECÍFICAS:
+${userInput || 'Expanda com máximo de detalhes, diálogos realistas e descrições visuais cinematográficas.'}
 
-Escreva o conteúdo expandido dessa parte do roteiro, com narrativa envolvente.`;
+REQUISITOS OBRIGATÓRIOS:
+1. Escreva NO MÍNIMO 10.000 caracteres (aproximadamente 2000 palavras)
+2. Inclua descrições visuais detalhadas (cenário, iluminação, expressões faciais, movimentos de câmera)
+3. Adicione diálogos realistas e naturais
+4. Mantenha a mesma linguagem e tom das partes anteriores
+5. Use os mesmos nomes de personagens já estabelecidos
+6. Siga a cronologia correta da história
+7. NÃO contradiga eventos de partes anteriores
+8. Crie ganchos de transição para a próxima parte
+
+Escreva APENAS o conteúdo expandido, sem cabeçalhos ou marcações.`;
 
       const response = await generateWithAI(prompt);
       
@@ -158,7 +251,8 @@ Escreva o conteúdo expandido dessa parte do roteiro, com narrativa envolvente.`
       });
       
       if (!expandingAll) {
-        toast.success(`Parte ${partIndex + 1} expandida!`);
+        const charCount = response.length;
+        toast.success(`Parte ${partIndex + 1} expandida! (${charCount.toLocaleString('pt-BR')} caracteres)`);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -190,7 +284,7 @@ Mantenha a narrativa fluida entre as partes.`;
 
       const response = await generateWithAI(prompt);
       setData(prev => ({ ...prev, finalScript: response }));
-      setCurrentStep(4);
+      setCurrentStep(5);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Erro ao gerar roteiro final');
@@ -200,11 +294,11 @@ Mantenha a narrativa fluida entre as partes.`;
   };
 
   const selectSuggestion = (suggestion: string) => {
-    if (currentStep === 0) {
+    if (currentStep === 1) {
       setData(prev => ({ ...prev, title: suggestion }));
-    } else if (currentStep === 1) {
-      setData(prev => ({ ...prev, synopsis: suggestion }));
     } else if (currentStep === 2) {
+      setData(prev => ({ ...prev, synopsis: suggestion }));
+    } else if (currentStep === 3) {
       setData(prev => ({ ...prev, parts: suggestion }));
     }
     setSuggestions([]);
@@ -212,15 +306,15 @@ Mantenha a narrativa fluida entre as partes.`;
   };
 
   const nextStep = () => {
-    if (currentStep === 0 && !data.title) {
+    if (currentStep === 1 && !data.title) {
       toast.error('Selecione ou digite um título');
       return;
     }
-    if (currentStep === 1 && !data.synopsis) {
+    if (currentStep === 2 && !data.synopsis) {
       toast.error('Selecione ou digite uma sinopse');
       return;
     }
-    if (currentStep === 2 && !data.parts) {
+    if (currentStep === 3 && !data.parts) {
       toast.error('Defina a estrutura do roteiro');
       return;
     }
@@ -284,7 +378,49 @@ Mantenha a narrativa fluida entre as partes.`;
   const renderStepContent = () => {
     const step = STEPS[currentStep];
 
-    if (currentStep === 4) {
+    // Step 0: Template configuration
+    if (currentStep === 0) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label>Template de Geração</Label>
+            <div className="flex gap-2">
+              {templates.length > 0 && (
+                <Select onValueChange={loadTemplate}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Carregar template..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name} {t.is_default && '⭐'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setShowSaveTemplateDialog(true)}>
+                <Save className="w-4 h-4 mr-1" />
+                Salvar
+              </Button>
+            </div>
+          </div>
+          <Textarea
+            value={customTemplate}
+            onChange={(e) => setCustomTemplate(e.target.value)}
+            rows={12}
+            className="font-mono text-sm"
+            placeholder="Digite as instruções para o modelo de IA..."
+          />
+          <p className="text-xs text-muted-foreground">
+            Este template será usado em todas as etapas de geração. Defina regras, estilo, e diretrizes.
+          </p>
+        </div>
+      );
+    }
+
+    // Step 5: Final result
+    if (currentStep === 5) {
       return (
         <div className="space-y-4">
           <div className="p-4 bg-muted rounded-lg">
@@ -317,7 +453,7 @@ Mantenha a narrativa fluida entre as partes.`;
       );
     }
 
-    if (currentStep === 3) {
+    if (currentStep === 4) {
       const parts = getParts();
       return (
         <div className="space-y-4">
@@ -590,7 +726,7 @@ Mantenha a narrativa fluida entre as partes.`;
       {renderStepContent()}
 
       {/* Navigation */}
-      {currentStep < 4 && (
+      {currentStep < 5 && (
         <div className="flex justify-between pt-4">
           <Button
             variant="outline"
@@ -601,7 +737,7 @@ Mantenha a narrativa fluida entre as partes.`;
             Anterior
           </Button>
           
-          {currentStep < 3 && (
+          {currentStep < 4 && (
             <Button onClick={nextStep}>
               Próximo
               <ChevronRight className="w-4 h-4 ml-2" />
@@ -615,6 +751,35 @@ Mantenha a narrativa fluida entre as partes.`;
           Configure a API Key nas configurações
         </p>
       )}
+
+      {/* Save Template Dialog */}
+      <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Salvar Template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nome do Template</Label>
+              <Input
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                placeholder="Ex: Template para Vídeos de História"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button variant="fire" onClick={handleSaveTemplate}>
+              <Save className="w-4 h-4 mr-2" />
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
