@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp, Wand2, Zap } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp, Wand2, Zap, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
@@ -82,6 +82,7 @@ export function MultiStepScriptWizard({
   const [loading, setLoading] = useState(false);
   const [expandingAll, setExpandingAll] = useState(false);
   const [expandProgress, setExpandProgress] = useState<{ current: number; total: number } | null>(null);
+  const [abortExpansion, setAbortExpansion] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [customTemplate, setCustomTemplate] = useState(DEFAULT_MULTISTEP_TEMPLATE);
@@ -122,21 +123,11 @@ export function MultiStepScriptWizard({
   const hasApiKey = !!getApiKey();
   const isFavorite = model === preferredModel;
 
-  // Detect language from title
-  const detectLanguage = (text: string): string => {
-    if (!text) return 'pt-BR';
-    // Check for Portuguese characters
-    if (/[àáâãéêíóôõúç]/i.test(text)) return 'pt-BR';
-    // Check if primarily Latin characters without Portuguese accents
-    if (/^[a-zA-Z0-9\s\-:!?,.']+$/.test(text.slice(0, 100))) return 'en';
-    return 'pt-BR';
-  };
+  // No language detection on frontend - LLM will detect from title
 
   const generateWithAI = async (prompt: string, systemPrompt?: string): Promise<string> => {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error('API Key não configurada');
-
-    const language = detectLanguage(data.title);
 
     const { data: result, error } = await supabase.functions.invoke('generate-script', {
       body: { 
@@ -144,7 +135,6 @@ export function MultiStepScriptWizard({
         model, 
         apiKey,
         systemPrompt: systemPrompt || customTemplate,
-        language
       },
     });
 
@@ -183,11 +173,6 @@ export function MultiStepScriptWizard({
     setLoading(true);
     setSuggestions([]);
 
-    const language = detectLanguage(data.title || userInput);
-    const langInstr = language === 'en' 
-      ? 'Respond in English.' 
-      : 'Responda em Português do Brasil.';
-
     try {
       let prompt = '';
       
@@ -197,32 +182,34 @@ export function MultiStepScriptWizard({
           setLoading(false);
           return;
         }
-        prompt = `${langInstr}
+        prompt = `CRITICAL: Detect the language of this idea and respond ONLY in that same language. If it's English, respond in English. If Portuguese, respond in Portuguese. If Chinese, respond in Chinese. Match the language exactly.
 
 Based on this video/story idea: "${userInput}"
         
 Generate exactly 3 creative and catchy title suggestions, one per line.
 Only the titles, no numbering or explanation.`;
       } else if (currentStep === 1) {
-        prompt = `${langInstr}
+        prompt = `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language.
 
 Title: "${data.title}"
 Additional description: "${userInput}"
 
 Generate exactly 3 different synopses (each 2-3 sentences) for this content.
 Separate each synopsis with "---" on a new line.
-Only the synopses, no numbering.`;
+Only the synopses, no numbering, no extra comments.`;
       } else if (currentStep === 2) {
-        // Can generate with just title + template
-        prompt = `${langInstr}
+        prompt = `CRITICAL: Detect the language of the title "${data.title}" and respond ONLY in that same language. Do NOT add any personal comments or observations. Output ONLY the structure.
 
 Title: "${data.title}"
 ${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
 ${userInput ? `Additional instructions: "${userInput}"` : ''}
 
-Suggest a structure divided into parts/chapters for this script.
-List each part with a short title and brief description (1 line).
-Format: "Part X: [Title] - [Brief description]"`;
+Generate a detailed structure divided into 10-20 parts/chapters.
+Each part MUST be a scene/moment of the story, NOT a meta-comment.
+Format: "Part X: [Scene Title] - [Brief scene description]"
+
+FORBIDDEN: Do not add conclusions, comments like "I hope this helps", or any text outside the structure format.
+Output ONLY the parts list, nothing else.`;
       }
 
       const response = await generateWithAI(prompt);
@@ -230,7 +217,12 @@ Format: "Part X: [Title] - [Brief description]"`;
       if (currentStep === 1) {
         setSuggestions(response.split('---').map(s => s.trim()).filter(Boolean));
       } else if (currentStep === 2) {
-        setSuggestions([response]);
+        // Clean up any LLM commentary that slipped through
+        const cleanedResponse = response
+          .split('\n')
+          .filter(line => /^(Part|Parte)\s*\d+/i.test(line.trim()))
+          .join('\n');
+        setSuggestions([cleanedResponse || response]);
       } else {
         setSuggestions(response.split('\n').map(s => s.trim()).filter(Boolean));
       }
@@ -245,19 +237,18 @@ Format: "Part X: [Title] - [Brief description]"`;
   const handleExpandPart = async (partDescription: string, partIndex: number) => {
     setLoading(true);
 
-    const language = detectLanguage(data.title);
-    const langInstr = language === 'en' 
-      ? 'Write ENTIRELY in English. Do NOT translate to any other language.' 
-      : 'Escreva em Português do Brasil.';
-
     try {
-      const previousContext = data.expandedParts
-        .slice(0, partIndex)
-        .filter(Boolean)
-        .map((p, i) => `[PART ${i + 1}]:\n${p.slice(0, 2000)}...`)
-        .join('\n\n');
+      const parts = getParts();
+      
+      // Get last 4000 chars from previous part for smooth continuation
+      const previousPartContent = partIndex > 0 && data.expandedParts[partIndex - 1] 
+        ? data.expandedParts[partIndex - 1].slice(-4000) 
+        : '';
+      
+      // Get next part info for transition
+      const nextPartInfo = parts[partIndex + 1] ? `NEXT PART PREVIEW: ${parts[partIndex + 1]}` : '';
 
-      const prompt = `${langInstr}
+      const prompt = `CRITICAL LANGUAGE RULE: Detect the language of the title "${data.title}" and write your ENTIRE response in that EXACT language. If the title is in English, write in English. If in Portuguese, write in Portuguese. If in Chinese, write in Chinese. DO NOT MIX LANGUAGES.
 
 SCRIPT CONTEXT:
 Title: "${data.title}"
@@ -266,26 +257,40 @@ ${data.synopsis ? `Synopsis: "${data.synopsis}"` : ''}
 FULL STRUCTURE:
 ${data.parts}
 
-${previousContext ? `PREVIOUS PARTS (maintain consistency):\n${previousContext}\n\n` : ''}
+${previousPartContent ? `CONTINUATION FROM PREVIOUS PART (continue exactly from here, do not repeat):\n---\n...${previousPartContent}\n---\n\n` : ''}
 
-TASK: Expand the following part in EXTREME DETAIL:
+CURRENT TASK: Expand this part in EXTREME DETAIL:
 ${partDescription}
+
+${nextPartInfo}
 
 INSTRUCTIONS: ${userInput || 'Maximum details, realistic dialogues, and cinematic visual descriptions.'}
 
-REQUIREMENTS:
+CRITICAL REQUIREMENTS:
 1. Write AT LEAST 10,000 characters (~2000 words)
 2. Detailed visual descriptions (setting, lighting, expressions, camera angles)
-3. Natural dialogues
-4. Same language and tone as previous parts
-5. Same character names
-6. Correct chronology
-7. DO NOT contradict previous parts
-8. Transition hooks
+3. Natural dialogues when applicable
+4. CONTINUE exactly where the previous part ended - no gaps, no repeated content
+5. Use the SAME character names from previous parts
+6. CORRECT chronology - events must follow logically
+7. DO NOT contradict anything from previous parts
+8. End with a smooth transition to the next part
+9. COMPLETE all sentences - no cut-off words or phrases
+10. NO markdown formatting (no #, *, ---, etc.)
+11. Plain text with paragraph breaks only
 
-Write ONLY the expanded content, no headers.`;
+OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps", no meta-text.`;
 
-      const response = await generateWithAI(prompt);
+      let response = await generateWithAI(prompt);
+      
+      // Clean markdown from response
+      response = response
+        .replace(/^#+\s*/gm, '')  // Remove # headers
+        .replace(/\*+/g, '')       // Remove * formatting
+        .replace(/^---+$/gm, '')   // Remove --- lines
+        .replace(/^—+$/gm, '')     // Remove — lines
+        .replace(/^\/+/gm, '')     // Remove /
+        .trim();
       
       setData(prev => {
         const newParts = [...prev.expandedParts];
@@ -305,23 +310,34 @@ Write ONLY the expanded content, no headers.`;
   };
 
   const assembleFinalScript = () => {
-    // Combine all expanded parts into final script
+    // Combine all expanded parts into final script - NO markdown
     const parts = getParts();
-    let finalText = `# ${data.title}\n\n`;
+    let finalText = `${data.title.toUpperCase()}\n\n`;
     
     if (data.synopsis) {
-      finalText += `*${data.synopsis}*\n\n---\n\n`;
+      finalText += `${data.synopsis}\n\n`;
     }
     
     parts.forEach((part, index) => {
-      finalText += `## ${part}\n\n`;
+      // Extract just the part name, removing "Part X:" prefix
+      const partName = part.replace(/^(Part|Parte)\s*\d+:\s*/i, '').trim();
+      finalText += `${partName.toUpperCase()}\n\n`;
+      
       if (data.expandedParts[index]) {
-        finalText += data.expandedParts[index];
-        finalText += '\n\n---\n\n';
+        // Clean any remaining markdown from expanded content
+        let content = data.expandedParts[index]
+          .replace(/^#+\s*/gm, '')
+          .replace(/\*+/g, '')
+          .replace(/^---+$/gm, '')
+          .replace(/^—+$/gm, '')
+          .replace(/^\/+/gm, '')
+          .trim();
+        
+        finalText += content + '\n\n';
       }
     });
 
-    setData(prev => ({ ...prev, finalScript: finalText }));
+    setData(prev => ({ ...prev, finalScript: finalText.trim() }));
     setScriptTitle(data.title);
     setCurrentStep(4);
   };
@@ -380,10 +396,17 @@ Write ONLY the expanded content, no headers.`;
     }
 
     setExpandingAll(true);
+    setAbortExpansion(false);
     setExpandProgress({ current: 0, total: parts.length });
 
     try {
       for (let i = 0; i < parts.length; i++) {
+        // Check if user wants to stop
+        if (abortExpansion) {
+          toast.info('Expansão cancelada pelo usuário');
+          break;
+        }
+        
         if (data.expandedParts[i]) {
           setExpandProgress({ current: i + 1, total: parts.length });
           continue;
@@ -396,16 +419,20 @@ Write ONLY the expanded content, no headers.`;
           await new Promise(r => setTimeout(r, 1000));
         }
       }
-      toast.success('Todas as partes foram expandidas!');
-      // Auto advance to step 5 after all expanded
-      setTimeout(() => {
-        assembleFinalScript();
-      }, 500);
+      
+      if (!abortExpansion) {
+        toast.success('Todas as partes foram expandidas!');
+        // Auto advance to step 5 after all expanded
+        setTimeout(() => {
+          assembleFinalScript();
+        }, 500);
+      }
     } catch (error) {
       toast.error('Erro ao expandir partes');
     } finally {
       setExpandingAll(false);
       setExpandProgress(null);
+      setAbortExpansion(false);
     }
   };
 
@@ -731,25 +758,36 @@ Write ONLY the expanded content, no headers.`;
                   />
                 </div>
 
-                {!allExpanded && (
+                {!allExpanded && !expandingAll && (
                   <Button 
                     variant="secondary" 
                     onClick={handleExpandAllSequentially}
-                    disabled={loading || expandingAll}
+                    disabled={loading}
                     className="w-full"
                   >
-                    {expandingAll ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Expandindo {expandProgress?.current} de {expandProgress?.total}...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Expandir Todas as Partes
-                      </>
-                    )}
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Expandir Todas as Partes
                   </Button>
+                )}
+
+                {expandingAll && (
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="secondary" 
+                      disabled
+                      className="flex-1"
+                    >
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Expandindo {expandProgress?.current} de {expandProgress?.total}...
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={() => setAbortExpansion(true)}
+                    >
+                      <Square className="w-4 h-4 mr-2" />
+                      Parar
+                    </Button>
+                  </div>
                 )}
 
                 {allExpanded && (

@@ -208,19 +208,31 @@ export default function AIStudio() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full max-w-2xl grid-cols-4">
-          <TabsTrigger value="script" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="script" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'script' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
             <FileText className="w-4 h-4" />
             Roteiro
           </TabsTrigger>
-          <TabsTrigger value="wizard" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="wizard" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'wizard' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
             <Layers className="w-4 h-4" />
             Multi-Etapas
           </TabsTrigger>
-          <TabsTrigger value="scene" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="scene" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'scene' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
             <Wand2 className="w-4 h-4" />
             Cenas
           </TabsTrigger>
-          <TabsTrigger value="images" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="images" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'images' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
             <Image className="w-4 h-4" />
             Imagens
           </TabsTrigger>
