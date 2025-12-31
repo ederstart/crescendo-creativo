@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
@@ -30,11 +33,10 @@ interface StepData {
 }
 
 const STEPS = [
-  { id: 'template', label: 'Template', description: 'Configure o template de geração' },
   { id: 'title', label: 'Título', description: 'Defina o título do seu roteiro' },
   { id: 'synopsis', label: 'Sinopse', description: 'Crie uma sinopse envolvente' },
   { id: 'parts', label: 'Estrutura', description: 'Defina as partes da história' },
-  { id: 'expand', label: 'Expansão', description: 'Expanda cada parte da história' },
+  { id: 'expand', label: 'Expansão', description: 'Expanda cada parte com detalhes' },
   { id: 'final', label: 'Resultado', description: 'Roteiro final formatado' },
 ];
 
@@ -69,6 +71,7 @@ export function MultiStepScriptWizard({
   onComplete,
   onFavoriteModel,
 }: MultiStepScriptWizardProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { templates, createTemplate, loading: templatesLoading } = usePromptTemplates('script');
   
@@ -82,6 +85,8 @@ export function MultiStepScriptWizard({
   const [customTemplate, setCustomTemplate] = useState(DEFAULT_MULTISTEP_TEMPLATE);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [expandedPartIndex, setExpandedPartIndex] = useState<number | null>(null);
   const [data, setData] = useState<StepData>({
     title: '',
     synopsis: '',
@@ -89,7 +94,6 @@ export function MultiStepScriptWizard({
     expandedParts: [],
     finalScript: '',
   });
-  const [currentPartIndex, setCurrentPartIndex] = useState(0);
 
   // Load default template on mount
   useEffect(() => {
@@ -102,7 +106,6 @@ export function MultiStepScriptWizard({
   const getApiKey = () => {
     if (model === 'groq') return groqApiKey;
     if (model === 'gemini') return geminiApiKey;
-    // qwen, deepseek, llama all use openrouter
     return openrouterApiKey;
   };
 
@@ -165,19 +168,19 @@ export function MultiStepScriptWizard({
     try {
       let prompt = '';
       
-      if (currentStep === 1) {
+      if (currentStep === 0) {
         prompt = `Com base na seguinte ideia de vídeo/história: "${userInput}"
         
 Gere exatamente 3 sugestões de títulos criativos e chamativos, um por linha.
 Apenas os títulos, sem numeração ou explicação.`;
-      } else if (currentStep === 2) {
+      } else if (currentStep === 1) {
         prompt = `Título do vídeo/história: "${data.title}"
 Descrição adicional: "${userInput}"
 
 Gere exatamente 3 sinopses diferentes (cada uma com 2-3 frases) para este conteúdo.
 Separe cada sinopse com "---" em uma nova linha.
 Apenas as sinopses, sem numeração.`;
-      } else if (currentStep === 3) {
+      } else if (currentStep === 2) {
         prompt = `Título: "${data.title}"
 Sinopse: "${data.synopsis}"
 Instruções adicionais: "${userInput}"
@@ -189,9 +192,9 @@ Formato: "Parte X: [Título] - [Descrição breve]"`;
 
       const response = await generateWithAI(prompt);
       
-      if (currentStep === 2) {
+      if (currentStep === 1) {
         setSuggestions(response.split('---').map(s => s.trim()).filter(Boolean));
-      } else if (currentStep === 3) {
+      } else if (currentStep === 2) {
         setSuggestions([response]);
       } else {
         setSuggestions(response.split('\n').map(s => s.trim()).filter(Boolean));
@@ -208,39 +211,37 @@ Formato: "Parte X: [Título] - [Descrição breve]"`;
     setLoading(true);
 
     try {
-      // Build context from previously expanded parts
       const previousContext = data.expandedParts
         .slice(0, partIndex)
         .filter(Boolean)
-        .map((p, i) => `[PARTE ${i + 1} ANTERIOR - REFERÊNCIA]:\n${p.slice(0, 2000)}...`)
+        .map((p, i) => `[PARTE ${i + 1} ANTERIOR]:\n${p.slice(0, 2000)}...`)
         .join('\n\n');
 
       const prompt = `CONTEXTO DO ROTEIRO:
 Título: "${data.title}"
 Sinopse: "${data.synopsis}"
 
-ESTRUTURA COMPLETA DO ROTEIRO:
+ESTRUTURA COMPLETA:
 ${data.parts}
 
-${previousContext ? `PARTES ANTERIORES (para manter consistência de personagens/eventos):\n${previousContext}\n\n` : ''}
+${previousContext ? `PARTES ANTERIORES (manter consistência):\n${previousContext}\n\n` : ''}
 
 TAREFA: Expanda a seguinte parte de forma EXTREMAMENTE DETALHADA:
 ${partDescription}
 
-INSTRUÇÕES ESPECÍFICAS:
-${userInput || 'Expanda com máximo de detalhes, diálogos realistas e descrições visuais cinematográficas.'}
+INSTRUÇÕES: ${userInput || 'Máximo de detalhes, diálogos realistas e descrições visuais cinematográficas.'}
 
-REQUISITOS OBRIGATÓRIOS:
-1. Escreva NO MÍNIMO 10.000 caracteres (aproximadamente 2000 palavras)
-2. Inclua descrições visuais detalhadas (cenário, iluminação, expressões faciais, movimentos de câmera)
-3. Adicione diálogos realistas e naturais
-4. Mantenha a mesma linguagem e tom das partes anteriores
-5. Use os mesmos nomes de personagens já estabelecidos
-6. Siga a cronologia correta da história
-7. NÃO contradiga eventos de partes anteriores
-8. Crie ganchos de transição para a próxima parte
+REQUISITOS:
+1. Escreva NO MÍNIMO 10.000 caracteres (~2000 palavras)
+2. Descrições visuais detalhadas (cenário, iluminação, expressões, câmera)
+3. Diálogos naturais
+4. Mesma linguagem e tom das partes anteriores
+5. Mesmos nomes de personagens
+6. Cronologia correta
+7. NÃO contradizer partes anteriores
+8. Ganchos de transição
 
-Escreva APENAS o conteúdo expandido, sem cabeçalhos ou marcações.`;
+Escreva APENAS o conteúdo expandido, sem cabeçalhos.`;
 
       const response = await generateWithAI(prompt);
       
@@ -251,8 +252,7 @@ Escreva APENAS o conteúdo expandido, sem cabeçalhos ou marcações.`;
       });
       
       if (!expandingAll) {
-        const charCount = response.length;
-        toast.success(`Parte ${partIndex + 1} expandida! (${charCount.toLocaleString('pt-BR')} caracteres)`);
+        toast.success(`Parte ${partIndex + 1} expandida! (${response.length.toLocaleString('pt-BR')} caracteres)`);
       }
     } catch (error) {
       console.error('Error:', error);
@@ -284,7 +284,7 @@ Mantenha a narrativa fluida entre as partes.`;
 
       const response = await generateWithAI(prompt);
       setData(prev => ({ ...prev, finalScript: response }));
-      setCurrentStep(5);
+      setCurrentStep(4);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Erro ao gerar roteiro final');
@@ -294,11 +294,11 @@ Mantenha a narrativa fluida entre as partes.`;
   };
 
   const selectSuggestion = (suggestion: string) => {
-    if (currentStep === 1) {
+    if (currentStep === 0) {
       setData(prev => ({ ...prev, title: suggestion }));
-    } else if (currentStep === 2) {
+    } else if (currentStep === 1) {
       setData(prev => ({ ...prev, synopsis: suggestion }));
-    } else if (currentStep === 3) {
+    } else if (currentStep === 2) {
       setData(prev => ({ ...prev, parts: suggestion }));
     }
     setSuggestions([]);
@@ -306,16 +306,16 @@ Mantenha a narrativa fluida entre as partes.`;
   };
 
   const nextStep = () => {
-    if (currentStep === 1 && !data.title) {
-      toast.error('Selecione ou digite um título');
+    if (currentStep === 0 && !data.title) {
+      toast.error('Defina um título');
       return;
     }
-    if (currentStep === 2 && !data.synopsis) {
-      toast.error('Selecione ou digite uma sinopse');
+    if (currentStep === 1 && !data.synopsis) {
+      toast.error('Defina uma sinopse');
       return;
     }
-    if (currentStep === 3 && !data.parts) {
-      toast.error('Defina a estrutura do roteiro');
+    if (currentStep === 2 && !data.parts) {
+      toast.error('Defina a estrutura');
       return;
     }
     setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
@@ -352,7 +352,6 @@ Mantenha a narrativa fluida entre as partes.`;
 
     try {
       for (let i = 0; i < parts.length; i++) {
-        // Skip if already expanded
         if (data.expandedParts[i]) {
           setExpandProgress({ current: i + 1, total: parts.length });
           continue;
@@ -361,7 +360,6 @@ Mantenha a narrativa fluida entre as partes.`;
         setExpandProgress({ current: i + 1, total: parts.length });
         await handleExpandPart(parts[i], i);
         
-        // Small delay between parts to avoid rate limits
         if (i < parts.length - 1) {
           await new Promise(r => setTimeout(r, 1000));
         }
@@ -375,381 +373,378 @@ Mantenha a narrativa fluida entre as partes.`;
     }
   };
 
-  const renderStepContent = () => {
-    const step = STEPS[currentStep];
-
-    // Step 0: Template configuration
-    if (currentStep === 0) {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label>Template de Geração</Label>
-            <div className="flex gap-2">
-              {templates.length > 0 && (
-                <Select onValueChange={loadTemplate}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Carregar template..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} {t.is_default && '⭐'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Button variant="outline" size="sm" onClick={() => setShowSaveTemplateDialog(true)}>
-                <Save className="w-4 h-4 mr-1" />
-                Salvar
-              </Button>
-            </div>
-          </div>
-          <Textarea
-            value={customTemplate}
-            onChange={(e) => setCustomTemplate(e.target.value)}
-            rows={12}
-            className="font-mono text-sm"
-            placeholder="Digite as instruções para o modelo de IA..."
-          />
-          <p className="text-xs text-muted-foreground">
-            Este template será usado em todas as etapas de geração. Defina regras, estilo, e diretrizes.
-          </p>
-        </div>
-      );
-    }
-
-    // Step 5: Final result
-    if (currentStep === 5) {
-      return (
-        <div className="space-y-4">
-          <div className="p-4 bg-muted rounded-lg">
-            <h4 className="font-semibold mb-2">Título: {data.title}</h4>
-            <p className="text-sm text-muted-foreground mb-4">{data.synopsis}</p>
-          </div>
-          
-          <Textarea
-            value={data.finalScript}
-            onChange={(e) => setData(prev => ({ ...prev, finalScript: e.target.value }))}
-            rows={15}
-            className="font-mono text-sm"
-          />
-          
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={resetWizard}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Recomeçar
-            </Button>
-            <Button 
-              variant="fire" 
-              onClick={() => onComplete(data.finalScript, data.title)}
-              className="flex-1"
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Usar Este Roteiro
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (currentStep === 4) {
-      const parts = getParts();
-      return (
-        <div className="space-y-4">
-          <div className="p-4 bg-muted rounded-lg">
-            <h4 className="font-semibold mb-1">{data.title}</h4>
-            <p className="text-sm text-muted-foreground">{data.synopsis}</p>
-          </div>
-
-          <div className="space-y-3">
-            <Label>Partes para Expandir:</Label>
-            {parts.map((part, index) => (
-              <Card key={index} className="border-border">
-                <CardHeader className="py-3">
-                  <CardTitle className="text-sm font-medium">{part}</CardTitle>
-                </CardHeader>
-                <CardContent className="py-2">
-                  {data.expandedParts[index] ? (
-                    <div className="space-y-2">
-                      <Textarea 
-                        value={data.expandedParts[index]}
-                        onChange={(e) => {
-                          setData(prev => {
-                            const newParts = [...prev.expandedParts];
-                            newParts[index] = e.target.value;
-                            return { ...prev, expandedParts: newParts };
-                          });
-                        }}
-                        rows={4}
-                        className="text-sm"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleExpandPart(part, index)}
-                        disabled={loading}
-                      >
-                        <RotateCcw className="w-3 h-3 mr-1" />
-                        Regenerar
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => handleExpandPart(part, index)}
-                      disabled={loading}
-                    >
-                      {loading && currentPartIndex === index ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3 h-3 mr-1" />
-                      )}
-                      Expandir
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <div>
-            <Label>Instruções para Expansão (opcional)</Label>
-            <Textarea
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              placeholder="Ex: Incluir mais diálogos, adicionar descrições visuais, tom humorístico..."
-              rows={2}
-              className="mt-1"
-            />
-          </div>
-
-          {/* Expand All Button */}
-          {parts.length > 0 && data.expandedParts.filter(Boolean).length < parts.length && (
-            <Button 
-              variant="secondary" 
-              onClick={handleExpandAllSequentially}
-              disabled={loading || expandingAll}
-              className="w-full"
-            >
-              {expandingAll ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Expandindo {expandProgress?.current} de {expandProgress?.total}...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Expandir Todas as Partes
-                </>
-              )}
-            </Button>
-          )}
-
-          {data.expandedParts.filter(Boolean).length === parts.length && parts.length > 0 && (
-            <Button 
-              variant="fire" 
-              onClick={handleGenerateFinal}
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4 mr-2" />
-              )}
-              Gerar Roteiro Final
-            </Button>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <Label>{step.description}</Label>
-          <Textarea
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            placeholder={
-              currentStep === 0 
-                ? 'Descreva sobre o que será seu vídeo/história...'
-                : currentStep === 1
-                ? 'Adicione detalhes para a sinopse...'
-                : 'Instruções para a estrutura...'
-            }
-            rows={3}
-            className="mt-1"
-          />
-        </div>
-
-        <Button
-          onClick={handleGenerateSuggestions}
-          disabled={loading || !hasApiKey}
-          variant="secondary"
-          className="w-full"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Gerando...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 mr-2" />
-              Gerar Sugestões
-            </>
-          )}
-        </Button>
-
-        {suggestions.length > 0 && (
-          <div className="space-y-2">
-            <Label>Escolha uma opção:</Label>
-            {suggestions.map((suggestion, index) => (
-              <Card 
-                key={index} 
-                className="cursor-pointer hover:bg-muted/50 transition-colors border-border"
-                onClick={() => selectSuggestion(suggestion)}
-              >
-                <CardContent className="py-3">
-                  <p className="text-sm">{suggestion}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-
-        {currentStep === 0 && (
-          <div>
-            <Label>Ou digite o título diretamente:</Label>
-            <Input
-              value={data.title}
-              onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Título do roteiro"
-              className="mt-1"
-            />
-          </div>
-        )}
-
-        {currentStep === 1 && (
-          <div>
-            <Label>Ou digite a sinopse diretamente:</Label>
-            <Textarea
-              value={data.synopsis}
-              onChange={(e) => setData(prev => ({ ...prev, synopsis: e.target.value }))}
-              placeholder="Sinopse do roteiro"
-              rows={3}
-              className="mt-1"
-            />
-          </div>
-        )}
-
-        {currentStep === 2 && (
-          <div>
-            <Label>Ou defina a estrutura diretamente:</Label>
-            <Textarea
-              value={data.parts}
-              onChange={(e) => setData(prev => ({ ...prev, parts: e.target.value }))}
-              placeholder="Parte 1: Introdução&#10;Parte 2: Desenvolvimento&#10;Parte 3: Clímax&#10;Parte 4: Conclusão"
-              rows={5}
-              className="mt-1"
-            />
-          </div>
-        )}
-      </div>
-    );
-  };
+  const parts = getParts();
+  const allExpanded = parts.length > 0 && data.expandedParts.filter(Boolean).length === parts.length;
 
   return (
     <div className="space-y-6">
-      {/* Model selector */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label>Modelo de IA</Label>
+      {/* Header with Model Selector */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Select value={model} onValueChange={(v) => setModel(v as typeof model)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
+              <SelectItem value="gemini">Gemini 2.5</SelectItem>
+              <SelectItem value="qwen">Qwen3 Coder</SelectItem>
+              <SelectItem value="deepseek">DeepSeek R1</SelectItem>
+              <SelectItem value="llama">Llama 3.3</SelectItem>
+            </SelectContent>
+          </Select>
           {onFavoriteModel && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={() => onFavoriteModel(model)}
               className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
             >
               <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-              {isFavorite ? 'Favorito' : 'Favoritar'}
             </Button>
           )}
         </div>
-        <Select value={model} onValueChange={(v) => setModel(v as 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama')}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="groq">Groq (Llama 3.3 70B)</SelectItem>
-            <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-            <SelectItem value="qwen">Qwen3 Coder (OpenRouter)</SelectItem>
-            <SelectItem value="deepseek">DeepSeek R1 (OpenRouter)</SelectItem>
-            <SelectItem value="llama">Llama 3.3 (OpenRouter)</SelectItem>
-          </SelectContent>
-        </Select>
+        
+        {!hasApiKey && (
+          <p className="text-sm text-destructive">Configure a API Key nas configurações</p>
+        )}
       </div>
 
-      {/* Steps indicator */}
-      <div className="flex items-center justify-between">
+      {/* Template Section - Collapsible */}
+      <Collapsible open={templateOpen} onOpenChange={setTemplateOpen}>
+        <Card className="border-dashed">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium">Template de Geração</CardTitle>
+                </div>
+                {templateOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 space-y-3">
+              <div className="flex gap-2">
+                {templates.length > 0 && (
+                  <Select onValueChange={loadTemplate}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Carregar template salvo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map(t => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} {t.is_default && '⭐'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setShowSaveTemplateDialog(true)}>
+                  <Save className="w-4 h-4 mr-1" />Salvar
+                </Button>
+              </div>
+              <Textarea
+                value={customTemplate}
+                onChange={(e) => setCustomTemplate(e.target.value)}
+                rows={8}
+                className="font-mono text-xs"
+              />
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      {/* Steps Progress */}
+      <div className="flex items-center justify-between px-2">
         {STEPS.map((step, index) => (
           <div key={step.id} className="flex items-center">
-            <div 
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                index < currentStep 
-                  ? 'bg-primary text-primary-foreground'
-                  : index === currentStep
-                  ? 'bg-secondary text-secondary-foreground'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {index < currentStep ? <Check className="w-4 h-4" /> : index + 1}
+            <div className="flex flex-col items-center">
+              <div 
+                className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                  index < currentStep 
+                    ? 'bg-primary text-primary-foreground'
+                    : index === currentStep
+                    ? 'bg-secondary text-secondary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {index < currentStep ? <Check className="w-5 h-5" /> : index + 1}
+              </div>
+              <span className={`text-xs mt-1 hidden sm:block ${index === currentStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                {step.label}
+              </span>
             </div>
             {index < STEPS.length - 1 && (
-              <div className={`w-8 h-0.5 ${index < currentStep ? 'bg-primary' : 'bg-muted'}`} />
+              <div className={`w-8 md:w-16 h-1 mx-1 rounded ${index < currentStep ? 'bg-primary' : 'bg-muted'}`} />
             )}
           </div>
         ))}
       </div>
 
-      {/* Current step label */}
-      <div className="text-center">
-        <h3 className="font-semibold text-foreground">{STEPS[currentStep].label}</h3>
+      {/* Current Step Header */}
+      <div className="text-center py-2">
+        <h3 className="text-xl font-semibold text-foreground">{STEPS[currentStep].label}</h3>
         <p className="text-sm text-muted-foreground">{STEPS[currentStep].description}</p>
       </div>
 
-      {/* Step content */}
-      {renderStepContent()}
+      {/* Step Content */}
+      <Card>
+        <CardContent className="pt-6">
+          {/* Step 4: Final Result */}
+          {currentStep === 4 ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted/50 rounded-lg border">
+                <h4 className="font-semibold">{data.title}</h4>
+                <p className="text-sm text-muted-foreground mt-1">{data.synopsis}</p>
+              </div>
+              
+              <Textarea
+                value={data.finalScript}
+                onChange={(e) => setData(prev => ({ ...prev, finalScript: e.target.value }))}
+                rows={15}
+                className="font-mono text-sm"
+              />
+              
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={resetWizard}>
+                  <RotateCcw className="w-4 h-4 mr-2" />Recomeçar
+                </Button>
+                <Button 
+                  variant="fire" 
+                  onClick={() => {
+                    onComplete(data.finalScript, data.title);
+                    navigate('/ai-studio');
+                  }}
+                  className="flex-1"
+                >
+                  <Check className="w-4 h-4 mr-2" />Salvar e Automatizar
+                </Button>
+              </div>
+            </div>
+          ) : currentStep === 3 ? (
+            /* Step 3: Expansion */
+            <div className="space-y-4">
+              <div className="p-3 bg-muted/50 rounded-lg border text-sm">
+                <strong>{data.title}</strong>
+                <p className="text-muted-foreground">{data.synopsis}</p>
+              </div>
+
+              <div className="space-y-3">
+                {parts.map((part, index) => (
+                  <Card key={index} className={`border-l-4 ${data.expandedParts[index] ? 'border-l-primary' : 'border-l-muted-foreground/30'}`}>
+                    <CardHeader className="py-3 px-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${data.expandedParts[index] ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                            {index + 1}
+                          </div>
+                          <span className="text-sm font-medium">{part}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {data.expandedParts[index] && (
+                            <span className="text-xs text-muted-foreground">
+                              {data.expandedParts[index].length.toLocaleString('pt-BR')} chars
+                            </span>
+                          )}
+                          {data.expandedParts[index] ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setExpandedPartIndex(expandedPartIndex === index ? null : index)}
+                            >
+                              {expandedPartIndex === index ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleExpandPart(part, index)}
+                              disabled={loading}
+                            >
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                              Expandir
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    {expandedPartIndex === index && data.expandedParts[index] && (
+                      <CardContent className="pt-0 px-4 pb-4">
+                        <ScrollArea className="h-48">
+                          <Textarea 
+                            value={data.expandedParts[index]}
+                            onChange={(e) => {
+                              setData(prev => {
+                                const newParts = [...prev.expandedParts];
+                                newParts[index] = e.target.value;
+                                return { ...prev, expandedParts: newParts };
+                              });
+                            }}
+                            className="text-sm min-h-[180px]"
+                          />
+                        </ScrollArea>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleExpandPart(part, index)}
+                          disabled={loading}
+                          className="mt-2"
+                        >
+                          <RotateCcw className="w-3 h-3 mr-1" />Regenerar
+                        </Button>
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+
+              <div className="space-y-3 pt-4 border-t">
+                <div>
+                  <Label>Instruções para expansão (opcional)</Label>
+                  <Textarea
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="Ex: Mais diálogos, descrições visuais, tom humorístico..."
+                    rows={2}
+                    className="mt-1"
+                  />
+                </div>
+
+                {!allExpanded && (
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleExpandAllSequentially}
+                    disabled={loading || expandingAll}
+                    className="w-full"
+                  >
+                    {expandingAll ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Expandindo {expandProgress?.current} de {expandProgress?.total}...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Expandir Todas as Partes
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {allExpanded && (
+                  <Button 
+                    variant="fire" 
+                    onClick={handleGenerateFinal}
+                    disabled={loading}
+                    className="w-full"
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileText className="w-4 h-4 mr-2" />}
+                    Gerar Roteiro Final
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Steps 0-2: Title, Synopsis, Structure */
+            <div className="space-y-4">
+              <div>
+                <Label>{STEPS[currentStep].description}</Label>
+                <Textarea
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  placeholder={
+                    currentStep === 0 
+                      ? 'Descreva sobre o que será seu vídeo/história...'
+                      : currentStep === 1
+                      ? 'Adicione detalhes para a sinopse...'
+                      : 'Instruções para a estrutura...'
+                  }
+                  rows={3}
+                  className="mt-1"
+                />
+              </div>
+
+              <Button
+                onClick={handleGenerateSuggestions}
+                disabled={loading || !hasApiKey}
+                variant="secondary"
+                className="w-full"
+              >
+                {loading ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                ) : (
+                  <><Sparkles className="w-4 h-4 mr-2" />Gerar Sugestões</>
+                )}
+              </Button>
+
+              {suggestions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Escolha uma opção:</Label>
+                  {suggestions.map((suggestion, index) => (
+                    <Card 
+                      key={index} 
+                      className="cursor-pointer hover:bg-muted/50 hover:border-primary/50 transition-colors"
+                      onClick={() => selectSuggestion(suggestion)}
+                    >
+                      <CardContent className="py-3">
+                        <p className="text-sm">{suggestion}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-4 border-t">
+                <Label>Ou digite diretamente:</Label>
+                {currentStep === 0 ? (
+                  <Input
+                    value={data.title}
+                    onChange={(e) => setData(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Título do roteiro"
+                    className="mt-1"
+                  />
+                ) : currentStep === 1 ? (
+                  <Textarea
+                    value={data.synopsis}
+                    onChange={(e) => setData(prev => ({ ...prev, synopsis: e.target.value }))}
+                    placeholder="Sinopse do roteiro"
+                    rows={3}
+                    className="mt-1"
+                  />
+                ) : (
+                  <Textarea
+                    value={data.parts}
+                    onChange={(e) => setData(prev => ({ ...prev, parts: e.target.value }))}
+                    placeholder="Parte 1: Introdução&#10;Parte 2: Desenvolvimento&#10;Parte 3: Clímax&#10;Parte 4: Conclusão"
+                    rows={5}
+                    className="mt-1"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Navigation */}
-      {currentStep < 5 && (
-        <div className="flex justify-between pt-4">
+      {currentStep < 4 && (
+        <div className="flex justify-between">
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 0}
           >
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Anterior
+            <ChevronLeft className="w-4 h-4 mr-2" />Anterior
           </Button>
           
-          {currentStep < 4 && (
+          {currentStep < 3 && (
             <Button onClick={nextStep}>
-              Próximo
-              <ChevronRight className="w-4 h-4 ml-2" />
+              Próximo<ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
         </div>
-      )}
-
-      {!hasApiKey && (
-        <p className="text-sm text-destructive text-center">
-          Configure a API Key nas configurações
-        </p>
       )}
 
       {/* Save Template Dialog */}
@@ -774,8 +769,7 @@ Mantenha a narrativa fluida entre as partes.`;
               Cancelar
             </Button>
             <Button variant="fire" onClick={handleSaveTemplate}>
-              <Save className="w-4 h-4 mr-2" />
-              Salvar
+              <Save className="w-4 h-4 mr-2" />Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

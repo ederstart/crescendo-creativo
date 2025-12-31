@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap } from 'lucide-react';
+import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -25,6 +26,9 @@ interface ScriptsProps {
   onSelectionChange?: (scripts: Script[]) => void;
 }
 
+type ViewMode = 'card' | 'list';
+type SortMode = 'created_at' | 'updated_at' | 'title';
+
 export default function Scripts({ selectionMode = false, onSelectionChange }: ScriptsProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -35,16 +39,34 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
   // Hide completed by default
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(['draft', 'in_progress']));
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Persisted preferences
+  const [viewMode, setViewMode] = useState<ViewMode>(() => 
+    (localStorage.getItem('scripts-view-mode') as ViewMode) || 'card'
+  );
+  const [sortMode, setSortMode] = useState<SortMode>(() => 
+    (localStorage.getItem('scripts-sort-mode') as SortMode) || 'created_at'
+  );
 
-  useEffect(() => { if (user) fetchScripts(); }, [user]);
+  useEffect(() => { if (user) fetchScripts(); }, [user, sortMode]);
 
   useEffect(() => {
     if (onSelectionChange) onSelectionChange(scripts.filter(s => selectedIds.has(s.id)));
   }, [selectedIds, scripts, onSelectionChange]);
 
+  useEffect(() => {
+    localStorage.setItem('scripts-view-mode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('scripts-sort-mode', sortMode);
+  }, [sortMode]);
+
   const fetchScripts = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('scripts').select('*').eq('user_id', user?.id).order('updated_at', { ascending: false });
+    const orderColumn = sortMode === 'title' ? 'title' : sortMode;
+    const ascending = sortMode === 'title';
+    const { data, error } = await supabase.from('scripts').select('*').eq('user_id', user?.id).order(orderColumn, { ascending });
     if (error) toast.error('Erro ao carregar roteiros');
     else setScripts(data || []);
     setLoading(false);
@@ -137,6 +159,39 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               <Input placeholder="Buscar roteiros..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 bg-muted border-border" />
             </div>
             <div className="flex gap-2">
+              {/* View Toggle */}
+              <div className="flex border border-border rounded-md">
+                <Button
+                  variant={viewMode === 'card' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  className="h-9 w-9 rounded-r-none"
+                  onClick={() => setViewMode('card')}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  className="h-9 w-9 rounded-l-none"
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              {/* Sort */}
+              <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+                <SelectTrigger className="w-[160px]">
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="created_at">Mais recentes</SelectItem>
+                  <SelectItem value="updated_at">Modificados</SelectItem>
+                  <SelectItem value="title">Alfabético</SelectItem>
+                </SelectContent>
+              </Select>
+              
               {!statusFilter.has('completed') && (
                 <Button variant="outline" size="sm" onClick={showAllStatuses}>
                   <Eye className="w-4 h-4 mr-2" />Exibir Todos
@@ -167,39 +222,92 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-4">
                 <Checkbox checked={selectedIds.size === filteredScripts.length && filteredScripts.length > 0} onCheckedChange={toggleAllSelection} />
                 <span className="text-sm text-muted-foreground">Selecionar todos ({filteredScripts.length})</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredScripts.map((script) => (
-                  <div key={script.id} className={`glass rounded-xl p-4 md:p-6 shadow-card hover:shadow-glow transition-all group ${selectedIds.has(script.id) ? 'ring-2 ring-primary' : ''}`}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <Checkbox checked={selectedIds.has(script.id)} onCheckedChange={() => toggleSelection(script.id)} />
-                        <div className="w-10 h-10 gradient-fire rounded-lg flex items-center justify-center"><FileText className="w-5 h-5 text-primary-foreground" /></div>
+              
+              {viewMode === 'card' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredScripts.map((script) => (
+                    <div key={script.id} className={`glass rounded-xl p-4 md:p-6 shadow-card hover:shadow-glow transition-all group ${selectedIds.has(script.id) ? 'ring-2 ring-primary' : ''}`}>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <Checkbox checked={selectedIds.has(script.id)} onCheckedChange={() => toggleSelection(script.id)} />
+                          <div className="w-10 h-10 gradient-fire rounded-lg flex items-center justify-center"><FileText className="w-5 h-5 text-primary-foreground" /></div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
-                          <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Link to={`/scripts/${script.id}`} className="block">
+                        <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors marquee-container">
+                          <span className="marquee-text">{script.title}</span>
+                        </h3>
+                      </Link>
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{script.content || 'Sem conteúdo ainda...'}</p>
+                      <div className="flex items-center justify-between">
+                        {getStatusBadge(script.status)}
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(script.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                      </div>
                     </div>
-                    <Link to={`/scripts/${script.id}`} className="block">
-                      <h3 className="text-lg font-semibold mb-2 hover:text-primary transition-colors marquee-container">
-                        <span className="marquee-text">{script.title}</span>
-                      </h3>
-                    </Link>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{script.content || 'Sem conteúdo ainda...'}</p>
-                    <div className="flex items-center justify-between">{getStatusBadge(script.status)}<span className="text-xs text-muted-foreground">{new Date(script.updated_at).toLocaleDateString('pt-BR')}</span></div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-muted/50">
+                      <tr className="text-left text-sm font-medium text-muted-foreground">
+                        <th className="p-3 w-10"></th>
+                        <th className="p-3">Título</th>
+                        <th className="p-3 hidden md:table-cell">Status</th>
+                        <th className="p-3 hidden lg:table-cell">Criado</th>
+                        <th className="p-3 w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filteredScripts.map((script) => (
+                        <tr key={script.id} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(script.id) ? 'bg-primary/5' : ''}`}>
+                          <td className="p-3">
+                            <Checkbox checked={selectedIds.has(script.id)} onCheckedChange={() => toggleSelection(script.id)} />
+                          </td>
+                          <td className="p-3">
+                            <Link to={`/scripts/${script.id}`} className="font-medium hover:text-primary transition-colors">
+                              {script.title}
+                            </Link>
+                            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{script.content?.substring(0, 80) || 'Sem conteúdo'}</p>
+                          </td>
+                          <td className="p-3 hidden md:table-cell">{getStatusBadge(script.status)}</td>
+                          <td className="p-3 hidden lg:table-cell text-xs text-muted-foreground">
+                            {new Date(script.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="p-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </TabsContent>
