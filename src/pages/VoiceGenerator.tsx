@@ -299,7 +299,12 @@ export default function VoiceGenerator() {
                   className="mt-1"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  {text.length} caracteres
+                  {text.length.toLocaleString('pt-BR')} caracteres
+                  {text.length > 5000 && (
+                    <span className="text-yellow-500 ml-2">
+                      ⚠️ Textos muito longos podem demorar mais
+                    </span>
+                  )}
                 </p>
               </div>
 

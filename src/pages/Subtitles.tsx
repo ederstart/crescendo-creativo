@@ -5,7 +5,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, FileText, Download, Trash2, Copy, Check, Plus, Subtitles as SubtitlesIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Loader2, FileText, Download, Trash2, Copy, Check, Plus, Subtitles as SubtitlesIcon, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -269,9 +271,34 @@ export default function Subtitles() {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-foreground truncate">{subtitle.title}</h4>
                       <p className="text-xs text-muted-foreground mt-1">{new Date(subtitle.created_at).toLocaleDateString('pt-BR')}</p>
-                      <pre className="text-xs text-muted-foreground mt-2 line-clamp-2 font-mono whitespace-pre-wrap bg-muted p-2 rounded">{subtitle.content.substring(0, 150)}...</pre>
+                      <pre className="text-xs text-muted-foreground mt-2 line-clamp-3 font-mono whitespace-pre-wrap bg-muted p-2 rounded">{subtitle.content.substring(0, 200)}...</pre>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex flex-col gap-1">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="icon" variant="ghost" title="Ver completo"><Eye className="w-4 h-4" /></Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[85vh]">
+                          <DialogHeader>
+                            <DialogTitle>{subtitle.title}</DialogTitle>
+                          </DialogHeader>
+                          <ScrollArea className="h-[60vh] mt-4">
+                            <pre className="text-sm font-mono whitespace-pre-wrap p-4 bg-muted rounded-lg">
+                              {subtitle.content}
+                            </pre>
+                          </ScrollArea>
+                          <div className="flex gap-2 mt-4">
+                            <Button variant="secondary" onClick={() => copySRT(subtitle.content, subtitle.id)} className="flex-1">
+                              {copied === subtitle.id ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                              Copiar
+                            </Button>
+                            <Button variant="fire" onClick={() => downloadSRT(subtitle)} className="flex-1">
+                              <Download className="w-4 h-4 mr-2" />
+                              Download
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                       <Button size="icon" variant="ghost" onClick={() => copySRT(subtitle.content, subtitle.id)}>{copied === subtitle.id ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}</Button>
                       <Button size="icon" variant="ghost" onClick={() => downloadSRT(subtitle)}><Download className="w-4 h-4" /></Button>
                       <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => deleteSubtitle(subtitle.id)}><Trash2 className="w-4 h-4" /></Button>

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star } from 'lucide-react';
 import { toast } from 'sonner';
@@ -479,106 +480,101 @@ export function ImageGallery({
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <Label>Template de Estilo</Label>
-            {styleTemplates.length > 0 && (
-              <Select onValueChange={(id) => {
-                const t = styleTemplates.find(t => t.id === id);
-                if (t) handleLoadTemplate(t);
-              }}>
-                <SelectTrigger className="w-40 h-8 text-xs">
-                  <SelectValue placeholder="Carregar..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {styleTemplates.map(t => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <div className="flex items-center gap-1">
-                        {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                        <span>{t.name}</span>
+        {/* Template de Estilo - Redesigned */}
+        <Card className="border-dashed">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Template de Estilo</Label>
+              <div className="flex gap-1">
+                {styleTemplates.length > 0 && (
+                  <Select onValueChange={(id) => {
+                    const t = styleTemplates.find(t => t.id === id);
+                    if (t) handleLoadTemplate(t);
+                  }}>
+                    <SelectTrigger className="h-8 w-32 text-xs">
+                      <SelectValue placeholder="Carregar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {styleTemplates.map(t => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <div className="flex items-center gap-1">
+                            {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                            <span>{t.name}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={saveStyleTemplate}
+                  disabled={savingStyle}
+                  title="Salvar como padrão"
+                >
+                  {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                </Button>
+                <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8" title="Salvar como novo">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Salvar Template de Estilo</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Nome do Template</Label>
+                        <Input
+                          value={newTemplateName}
+                          onChange={e => setNewTemplateName(e.target.value)}
+                          placeholder="Ex: Estilo Cartoon"
+                          className="mt-1"
+                        />
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-          <div className="flex gap-2 mt-1">
+                      <div>
+                        <Label>Conteúdo</Label>
+                        <Textarea value={styleTemplate} readOnly rows={3} className="mt-1 text-sm" />
+                      </div>
+                      <Button onClick={handleSaveAsNewTemplate} className="w-full">
+                        <Save className="w-4 h-4 mr-2" />Salvar Template
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+            
             <Textarea
               value={styleTemplate}
               onChange={(e) => setStyleTemplate(e.target.value)}
-              placeholder="Ex: cartoon style, white background, high quality, detailed illustration..."
+              placeholder="Ex: cartoon style, white background, high quality..."
               rows={2}
-              className="flex-1"
+              className="text-sm"
             />
-            <div className="flex flex-col gap-1">
-              <Button
-                variant="secondary"
-                size="icon"
-                onClick={saveStyleTemplate}
-                disabled={savingStyle}
-                title="Salvar como padrão"
-              >
-                {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              </Button>
-              <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="icon" title="Salvar como novo template">
-                    <Plus className="w-4 h-4" />
+            
+            {styleTemplates.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {styleTemplates.slice(0, 6).map(t => (
+                  <Button
+                    key={t.id}
+                    variant={styleTemplate === t.content ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => handleLoadTemplate(t)}
+                  >
+                    {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />}
+                    {t.name}
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Salvar Template de Estilo</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Nome do Template</Label>
-                      <Input
-                        value={newTemplateName}
-                        onChange={e => setNewTemplateName(e.target.value)}
-                        placeholder="Ex: Estilo Cartoon"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>Conteúdo</Label>
-                      <Textarea
-                        value={styleTemplate}
-                        readOnly
-                        rows={3}
-                        className="mt-1 text-sm"
-                      />
-                    </div>
-                    <Button onClick={handleSaveAsNewTemplate} className="w-full">
-                      <Save className="w-4 h-4 mr-2" />
-                      Salvar Template
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-          {styleTemplates.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {styleTemplates.slice(0, 5).map(t => (
-                <Button
-                  key={t.id}
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs px-2"
-                  onClick={() => handleLoadTemplate(t)}
-                >
-                  {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />}
-                  {t.name}
-                </Button>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            O template será combinado com cada prompt gerado
-          </p>
-        </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {isBatchMode ? (
           <div>
