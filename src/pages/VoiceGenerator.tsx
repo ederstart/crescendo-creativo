@@ -8,6 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 import { 
   Volume2, 
   Play, 
@@ -22,7 +24,9 @@ import {
   CheckCircle2,
   XCircle,
   Archive,
-  StopCircle
+  StopCircle,
+  Eye,
+  Scissors
 } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { toast } from 'sonner';
@@ -72,7 +76,68 @@ interface BatchItem {
   audioUrl?: string;
   retries: number;
   error?: string;
+  charCount: number;
 }
+
+// Smart text splitting function - respects punctuation and doesn't cut words
+const smartSplitText = (text: string, maxChars: number = 4000): string[] => {
+  const chunks: string[] = [];
+  let remaining = text.trim();
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Look for the last break point within the limit
+    let breakPoint = maxChars;
+    const searchArea = remaining.substring(0, maxChars);
+    
+    // First, try to break at sentence-ending punctuation
+    const lastSentenceEnd = Math.max(
+      searchArea.lastIndexOf('. '),
+      searchArea.lastIndexOf('! '),
+      searchArea.lastIndexOf('? '),
+      searchArea.lastIndexOf('.\n'),
+      searchArea.lastIndexOf('!\n'),
+      searchArea.lastIndexOf('?\n'),
+      searchArea.lastIndexOf('."'),
+      searchArea.lastIndexOf('!"'),
+      searchArea.lastIndexOf('?"'),
+    );
+
+    if (lastSentenceEnd > maxChars * 0.5) {
+      // Found sentence end after 50% of the chunk
+      breakPoint = lastSentenceEnd + 1;
+    } else {
+      // Try breaking at other punctuation
+      const lastPunctuation = Math.max(
+        searchArea.lastIndexOf('; '),
+        searchArea.lastIndexOf(': '),
+        searchArea.lastIndexOf(', '),
+        searchArea.lastIndexOf(';\n'),
+        searchArea.lastIndexOf(':\n'),
+      );
+
+      if (lastPunctuation > maxChars * 0.5) {
+        breakPoint = lastPunctuation + 1;
+      } else {
+        // Last resort: break at the last space
+        const lastSpace = searchArea.lastIndexOf(' ');
+        if (lastSpace > maxChars * 0.3) {
+          breakPoint = lastSpace;
+        }
+        // If no space found after 30%, we have to force cut (very rare for normal text)
+      }
+    }
+
+    chunks.push(remaining.substring(0, breakPoint).trim());
+    remaining = remaining.substring(breakPoint).trim();
+  }
+
+  return chunks.filter(c => c.length > 0);
+};
 
 export default function VoiceGenerator() {
   const { 
@@ -101,6 +166,10 @@ export default function VoiceGenerator() {
   const [batchProcessing, setBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const abortBatchRef = useRef(false);
+  
+  // Smart split options
+  const [autoSplit, setAutoSplit] = useState(true);
+  const [maxCharsPerAudio, setMaxCharsPerAudio] = useState(4000);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -141,6 +210,26 @@ export default function VoiceGenerator() {
       return () => clearInterval(interval);
     }
   }, [loading, batchProcessing]);
+
+  // Calculate batch stats
+  const calculateBatchStats = () => {
+    const lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const totalChars = lines.reduce((acc, l) => acc + l.length, 0);
+    
+    let estimatedAudios = lines.length;
+    if (autoSplit) {
+      estimatedAudios = 0;
+      for (const line of lines) {
+        if (line.length > maxCharsPerAudio) {
+          estimatedAudios += smartSplitText(line, maxCharsPerAudio).length;
+        } else {
+          estimatedAudios++;
+        }
+      }
+    }
+    
+    return { lineCount: lines.length, totalChars, estimatedAudios };
+  };
 
   // Single generation
   const handleGenerate = async () => {
@@ -198,17 +287,41 @@ export default function VoiceGenerator() {
     }
   };
 
-  // Parse batch text into items
-  const parseBatchText = () => {
-    const lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  // Parse batch text into items with smart splitting
+  const parseBatchText = (): BatchItem[] => {
+    let lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    if (autoSplit) {
+      // Apply smart splitting to each line that exceeds the limit
+      const splitLines: string[] = [];
+      for (const line of lines) {
+        if (line.length > maxCharsPerAudio) {
+          splitLines.push(...smartSplitText(line, maxCharsPerAudio));
+        } else {
+          splitLines.push(line);
+        }
+      }
+      lines = splitLines;
+    }
+    
     const items: BatchItem[] = lines.map((text, index) => ({
       index,
       text,
       status: 'pending',
       retries: 0,
+      charCount: text.length,
     }));
+    
     setBatchItems(items);
     return items;
+  };
+
+  // Preview split
+  const handlePreviewSplit = () => {
+    const items = parseBatchText();
+    toast.info(`Será dividido em ${items.length} áudios`, {
+      description: `Maior chunk: ${Math.max(...items.map(i => i.charCount)).toLocaleString('pt-BR')} caracteres`,
+    });
   };
 
   // Generate single item with retries
@@ -449,6 +562,7 @@ export default function VoiceGenerator() {
   const successCount = batchItems.filter(i => i.status === 'success').length;
   const failedCount = batchItems.filter(i => i.status === 'failed').length;
   const pendingCount = batchItems.filter(i => i.status === 'pending' || i.status === 'generating').length;
+  const batchStats = calculateBatchStats();
 
   return (
     <div className="p-4 md:p-8 animate-fade-in">
@@ -759,25 +873,87 @@ export default function VoiceGenerator() {
                   <Textarea
                     value={batchText}
                     onChange={(e) => setBatchText(e.target.value)}
-                    placeholder="Cole vários textos aqui (um por linha)..."
+                    placeholder="Cole vários textos aqui (um por linha) ou um roteiro grande..."
                     rows={10}
                     disabled={batchProcessing}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {batchText.split('\n').filter(l => l.trim()).length} textos
-                  </p>
+                  
+                  {/* Stats display */}
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <span className="text-muted-foreground">
+                      {batchStats.lineCount} {batchStats.lineCount === 1 ? 'linha' : 'linhas'}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {batchStats.totalChars.toLocaleString('pt-BR')} caracteres
+                    </span>
+                    {autoSplit && batchStats.estimatedAudios !== batchStats.lineCount && (
+                      <span className="text-primary font-medium">
+                        → {batchStats.estimatedAudios} áudios após divisão
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Smart split options */}
+                  <div className="p-4 bg-muted/50 rounded-lg space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Scissors className="w-4 h-4 text-muted-foreground" />
+                        <Label htmlFor="auto-split">Dividir automaticamente textos longos</Label>
+                      </div>
+                      <Switch
+                        id="auto-split"
+                        checked={autoSplit}
+                        onCheckedChange={setAutoSplit}
+                        disabled={batchProcessing}
+                      />
+                    </div>
+                    
+                    {autoSplit && (
+                      <div className="flex items-center gap-4">
+                        <Label htmlFor="max-chars" className="whitespace-nowrap text-sm">
+                          Limite por áudio:
+                        </Label>
+                        <Input
+                          id="max-chars"
+                          type="number"
+                          value={maxCharsPerAudio}
+                          onChange={(e) => setMaxCharsPerAudio(Math.max(500, Math.min(5000, parseInt(e.target.value) || 4000)))}
+                          className="w-24"
+                          disabled={batchProcessing}
+                          min={500}
+                          max={5000}
+                        />
+                        <span className="text-xs text-muted-foreground">caracteres</span>
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-muted-foreground">
+                      ✂️ Divide em pontuação (. ! ? ; :) sem cortar palavras
+                    </p>
+                  </div>
 
                   <div className="flex gap-2">
                     {!batchProcessing ? (
-                      <Button 
-                        onClick={handleBatchGenerate} 
-                        disabled={!batchText.trim()}
-                        variant="fire"
-                        className="flex-1"
-                      >
-                        <Volume2 className="w-4 h-4 mr-2" />
-                        Gerar Todos
-                      </Button>
+                      <>
+                        <Button 
+                          onClick={handleBatchGenerate} 
+                          disabled={!batchText.trim()}
+                          variant="fire"
+                          className="flex-1"
+                        >
+                          <Volume2 className="w-4 h-4 mr-2" />
+                          Gerar Todos
+                        </Button>
+                        <Button
+                          onClick={handlePreviewSplit}
+                          disabled={!batchText.trim()}
+                          variant="outline"
+                          size="icon"
+                          title="Visualizar divisão"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </>
                     ) : (
                       <Button 
                         onClick={handleStopBatch}
@@ -900,7 +1076,10 @@ export default function VoiceGenerator() {
                                 <span className="font-mono text-xs text-muted-foreground mr-2">
                                   #{item.index + 1}
                                 </span>
-                                {item.text}
+                                {item.text.slice(0, 100)}{item.text.length > 100 ? '...' : ''}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {item.charCount.toLocaleString('pt-BR')} caracteres
                               </p>
                               {item.status === 'failed' && item.error && (
                                 <p className="text-xs text-destructive mt-1">

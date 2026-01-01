@@ -8,6 +8,7 @@ import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2 } from 'lu
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
+import { useScriptIdeas } from '@/hooks/useScriptIdeas';
 import { PromptTemplateManager } from '@/components/ai/PromptTemplateManager';
 import { ScriptGenerator } from '@/components/ai/ScriptGenerator';
 import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
@@ -28,6 +29,11 @@ export default function AIStudio() {
   const { settings, saveSettings } = useAISettings();
   const { templates, createTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates();
   const { images, saveImage, deleteImage, deleteMultiple, refetch: refetchImages } = useGeneratedImages();
+  
+  // Script Ideas integration
+  const [showCompletedIdeas, setShowCompletedIdeas] = useState(false);
+  const { ideas: scriptIdeas, updateIdeaStatus } = useScriptIdeas(showCompletedIdeas);
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   
   const [generatedScript, setGeneratedScript] = useState(() => {
     return localStorage.getItem(SCRIPT_STORAGE_KEY) || '';
@@ -102,6 +108,7 @@ export default function AIStudio() {
     if (!confirm('Limpar o roteiro gerado?')) return;
     setGeneratedScript('');
     setScriptTitle('');
+    setSelectedIdeaId(null);
     localStorage.removeItem(SCRIPT_STORAGE_KEY);
     localStorage.removeItem(SCRIPT_TITLE_STORAGE_KEY);
     toast.success('Roteiro limpo');
@@ -126,6 +133,13 @@ export default function AIStudio() {
     setBatchPromptsForImages(prompts.join('\n'));
     setActiveTab('images');
     toast.success(`${prompts.length} prompts prontos! Clique em "Gerar Todas" para criar as imagens.`);
+  };
+
+  const handleIdeaSelect = async (idea: { id: string; title: string }) => {
+    setSelectedIdeaId(idea.id);
+    setScriptTitle(idea.title);
+    // Update idea status to in_progress
+    await updateIdeaStatus(idea.id, 'in_progress');
   };
 
   const saveScriptToDatabase = async () => {
@@ -160,6 +174,12 @@ export default function AIStudio() {
         .single();
 
       if (error) throw error;
+
+      // Mark idea as done if one was selected
+      if (selectedIdeaId) {
+        await updateIdeaStatus(selectedIdeaId, 'done');
+        setSelectedIdeaId(null);
+      }
 
       localStorage.removeItem(SCRIPT_STORAGE_KEY);
       localStorage.removeItem(SCRIPT_TITLE_STORAGE_KEY);
@@ -262,6 +282,10 @@ export default function AIStudio() {
                 preferredModel={settings?.preferred_model_script || 'groq'}
                 onGenerated={handleScriptGenerated}
                 onFavoriteModel={(model) => handleFavoriteModel('script', model)}
+                scriptIdeas={scriptIdeas}
+                onIdeaSelect={handleIdeaSelect}
+                showCompletedIdeas={showCompletedIdeas}
+                onToggleCompletedIdeas={() => setShowCompletedIdeas(!showCompletedIdeas)}
               />
             </div>
           </div>
