@@ -485,7 +485,7 @@ export function ScenePromptGenerator({
           <Input
             type="number"
             min={1}
-            max={500}
+            max={5000}
             value={numberOfScenes}
             onChange={(e) => setNumberOfScenes(parseInt(e.target.value) || 5)}
             className="mt-1"
