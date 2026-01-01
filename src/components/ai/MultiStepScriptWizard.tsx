@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp, Wand2, Zap, Square } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, Check, Star, Sparkles, RotateCcw, Save, FileText, Settings2, ChevronDown, ChevronUp, Wand2, Zap, Square, Lightbulb, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useAuth } from '@/hooks/useAuth';
+import { useScriptIdeas } from '@/hooks/useScriptIdeas';
 
 interface MultiStepScriptWizardProps {
   groqApiKey?: string;
@@ -77,6 +78,11 @@ export function MultiStepScriptWizard({
   const navigate = useNavigate();
   const { user } = useAuth();
   const { templates, createTemplate, loading: templatesLoading } = usePromptTemplates('script');
+  
+  // Script ideas integration
+  const [showCompletedIdeas, setShowCompletedIdeas] = useState(false);
+  const { ideas, loading: ideasLoading, updateIdeaStatus } = useScriptIdeas(showCompletedIdeas);
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   
   const [currentStep, setCurrentStep] = useState(0);
   const [model, setModel] = useState<'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama'>(preferredModel as 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama');
@@ -886,6 +892,71 @@ OUTPUT ONLY the expanded content. No headers, no comments, no "I hope this helps
               {/* Step 0: Title */}
               {currentStep === 0 && (
                 <>
+                  {/* Ideas Selector */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="flex items-center gap-2">
+                        <Lightbulb className="w-4 h-4" />
+                        Selecionar da Lista de Ideias
+                      </Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCompletedIdeas(!showCompletedIdeas)}
+                        className="text-muted-foreground"
+                      >
+                        {showCompletedIdeas ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+                        {showCompletedIdeas ? 'Ocultar Concluídos' : 'Ver Todos'}
+                      </Button>
+                    </div>
+                    <Select 
+                      value={selectedIdeaId || ''} 
+                      onValueChange={(id) => {
+                        const idea = ideas.find(i => i.id === id);
+                        if (idea) {
+                          setSelectedIdeaId(id);
+                          setData(prev => ({ ...prev, title: idea.title }));
+                          // Update status to in_progress
+                          updateIdeaStatus(id, 'in_progress');
+                          toast.success('Ideia selecionada! Status atualizado para "Em progresso"');
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={ideasLoading ? "Carregando..." : "Escolha uma ideia salva..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ideas.length === 0 ? (
+                          <SelectItem value="none" disabled>
+                            {showCompletedIdeas ? 'Nenhuma ideia salva' : 'Nenhuma ideia pendente'}
+                          </SelectItem>
+                        ) : (
+                          ideas.map((idea) => (
+                            <SelectItem key={idea.id} value={idea.id}>
+                              <div className="flex items-center gap-2">
+                                <span className={idea.status === 'done' ? 'line-through text-muted-foreground' : ''}>
+                                  {idea.title}
+                                </span>
+                                {idea.status === 'in_progress' && (
+                                  <span className="text-xs text-secondary">⏳</span>
+                                )}
+                                {idea.status === 'done' && (
+                                  <span className="text-xs text-green-500">✓</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="relative flex items-center py-2">
+                    <div className="flex-grow border-t border-muted"></div>
+                    <span className="px-3 text-xs text-muted-foreground">ou</span>
+                    <div className="flex-grow border-t border-muted"></div>
+                  </div>
+
                   <div>
                     <Label>Descreva sua ideia (opcional)</Label>
                     <Textarea
