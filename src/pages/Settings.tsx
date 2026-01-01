@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { User, Lock, Bot, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ExternalLink, Sparkles } from 'lucide-react';
+import { User, Lock, Bot, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ExternalLink } from 'lucide-react';
 
 export default function Settings() {
   const { user, signOut } = useAuth();
@@ -17,13 +17,10 @@ export default function Settings() {
   const [showKeys, setShowKeys] = useState(false);
   const [validatingCookie, setValidatingCookie] = useState(false);
   const [cookieValidationResult, setCookieValidationResult] = useState<'success' | 'error' | null>(null);
-  const [validatingPerchance, setValidatingPerchance] = useState(false);
-  const [perchanceValidationResult, setPerchanceValidationResult] = useState<'success' | 'error' | null>(null);
   const [groqKey, setGroqKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [googleCookie, setGoogleCookie] = useState('');
-  const [perchanceUserKey, setPerchanceUserKey] = useState('');
 
   const handlePasswordChange = async () => {
     if (!newPassword || newPassword.length < 6) {
@@ -51,49 +48,7 @@ export default function Settings() {
       gemini_api_key: geminiKey || settings?.gemini_api_key,
       openrouter_api_key: openrouterKey || settings?.openrouter_api_key,
       google_cookie: googleCookie || settings?.google_cookie,
-      perchance_user_key: perchanceUserKey || settings?.perchance_user_key,
     });
-  };
-
-  const handlePerchanceValidation = async () => {
-    const userKey = perchanceUserKey || settings?.perchance_user_key;
-
-    if (!userKey) {
-      toast.error('Configure a UserKey do Perchance primeiro');
-      return;
-    }
-
-    setValidatingPerchance(true);
-    setPerchanceValidationResult(null);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-perchance-image', {
-        body: {
-          prompt: 'A simple red circle on white background, minimal, clean',
-          userKey,
-          resolution: '512x512',
-        },
-      });
-
-      if (error) throw error;
-      
-      if (data.error) {
-        setPerchanceValidationResult('error');
-        toast.error('Validação falhou: ' + data.error);
-        if (data.suggestion) {
-          toast.info(data.suggestion);
-        }
-      } else if (data.imageBase64) {
-        setPerchanceValidationResult('success');
-        toast.success('UserKey validada com sucesso! Perchance funcionando!');
-      }
-    } catch (error) {
-      console.error('Perchance validation error:', error);
-      setPerchanceValidationResult('error');
-      toast.error('Erro ao validar userKey. Verifique se está correta.');
-    } finally {
-      setValidatingPerchance(false);
-    }
   };
 
   const handleCookieValidation = async () => {
@@ -309,68 +264,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Perchance Section */}
-          <div className="border-t border-border pt-4 mt-4">
-            <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4" />
-              Perchance (Gratuito/Ilimitado)
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <Label>UserKey do Perchance</Label>
-                <Input
-                  type={showKeys ? 'text' : 'password'}
-                  defaultValue={settings?.perchance_user_key || ''}
-                  onChange={(e) => setPerchanceUserKey(e.target.value)}
-                  placeholder="64 caracteres hexadecimais..."
-                  className="bg-muted border-border mt-1 font-mono text-xs"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Suporta 16:9 nativo e sem censura rigorosa
-                </p>
-              </div>
-              
-              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
-                <p className="font-medium text-foreground">Como obter a userKey:</p>
-                <ol className="list-decimal list-inside text-muted-foreground space-y-1 text-xs">
-                  <li>Acesse <a href="https://perchance.org/ai-text-to-image-generator" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">perchance.org/ai-text-to-image-generator <ExternalLink className="w-3 h-3" /></a></li>
-                  <li>Abra DevTools (F12) → Aba Network</li>
-                  <li>Gere qualquer imagem no site</li>
-                  <li>Procure a requisição "generate?prompt=..."</li>
-                  <li>Copie o valor de "userKey=" (64 caracteres)</li>
-                </ol>
-                <p className="text-xs text-green-600/80 mt-2">
-                  ✓ 100% gratuito e ilimitado • Suporta 16:9 • Menos censura
-                </p>
-              </div>
-              
-              <Button 
-                variant="outline"
-                onClick={handlePerchanceValidation}
-                disabled={validatingPerchance}
-                className="w-full"
-              >
-                {validatingPerchance ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Validando UserKey...
-                  </>
-                ) : perchanceValidationResult === 'success' ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
-                    UserKey Validada com Sucesso
-                  </>
-                ) : perchanceValidationResult === 'error' ? (
-                  <>
-                    <XCircle className="w-4 h-4 mr-2 text-destructive" />
-                    Falhou - Clique para tentar novamente
-                  </>
-                ) : (
-                  'Validar UserKey'
-                )}
-              </Button>
-            </div>
-          </div>
 
           <Button 
             variant="fire"

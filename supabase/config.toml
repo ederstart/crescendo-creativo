@@ -24,6 +24,3 @@ verify_jwt = false
 
 [functions.kokoro-tts]
 verify_jwt = false
-
-[functions.generate-perchance-image]
-verify_jwt = false
