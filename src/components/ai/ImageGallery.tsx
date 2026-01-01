@@ -5,13 +5,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, Sparkles, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import JSZip from 'jszip';
 import { useStyleTemplates, StyleTemplate } from '@/hooks/useStyleTemplates';
+import { useAISettings } from '@/hooks/useAISettings';
 
 interface GeneratedImage {
   id: string;
@@ -24,6 +25,7 @@ interface GeneratedImage {
 
 interface ImageGalleryProps {
   googleCookie?: string;
+  perchanceUserKey?: string;
   styleTemplate?: string;
   images: GeneratedImage[];
   onImageGenerated: (image: Omit<GeneratedImage, 'id' | 'created_at'>) => void;
@@ -39,6 +41,8 @@ interface ImageGalleryProps {
   onAutoStartBatchComplete?: () => void;
 }
 
+type ImageGenerator = 'whisk' | 'perchance';
+
 // Helper function to clean "Cena X:" prefix from prompts
 const cleanScenePrefix = (prompt: string): string => {
   return prompt.replace(/^(?:CENA|Cena|cena)\s*\d{1,3}\s*:\s*/i, '').trim();
@@ -50,6 +54,7 @@ const RETRY_DELAYS = [10000, 20000, 30000];
 
 export function ImageGallery({
   googleCookie,
+  perchanceUserKey,
   styleTemplate: initialStyleTemplate,
   images,
   onImageGenerated,
@@ -64,6 +69,7 @@ export function ImageGallery({
   autoStartBatch,
   onAutoStartBatchComplete,
 }: ImageGalleryProps) {
+  const { settings } = useAISettings();
   const { templates: styleTemplates, createTemplate, setFavorite, favoriteTemplate } = useStyleTemplates();
   
   const [prompt, setPrompt] = useState('');
@@ -80,6 +86,11 @@ export function ImageGallery({
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  
+  // Image generator selection
+  const [imageGenerator, setImageGenerator] = useState<ImageGenerator>(
+    (settings?.preferred_image_generator as ImageGenerator) || 'whisk'
+  );
   
   // Ref to control stopping batch generation
   const stopBatchRef = useRef(false);
@@ -117,7 +128,8 @@ export function ImageGallery({
 
   // Auto-start batch generation when automation triggers it
   useEffect(() => {
-    if (autoStartBatch && batchPrompts.trim() && !loading && !autoStartTriggeredRef.current && googleCookie) {
+    const hasCredentials = imageGenerator === 'whisk' ? googleCookie : perchanceUserKey;
+    if (autoStartBatch && batchPrompts.trim() && !loading && !autoStartTriggeredRef.current && hasCredentials) {
       autoStartTriggeredRef.current = true;
       // Small delay to ensure UI is ready
       const timer = setTimeout(() => {
@@ -127,7 +139,7 @@ export function ImageGallery({
       }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [autoStartBatch, batchPrompts, loading, googleCookie]);
+  }, [autoStartBatch, batchPrompts, loading, googleCookie, perchanceUserKey, imageGenerator]);
 
   // Reset auto-start ref when autoStartBatch becomes false
   useEffect(() => {
@@ -168,8 +180,13 @@ export function ImageGallery({
   const displayImages = activeAlbum === 'all' ? images : groupedImages[activeAlbum] || [];
 
   const handleGenerate = async (promptText: string, retryCount = 0): Promise<boolean> => {
-    if (!googleCookie) {
+    // Check credentials based on selected generator
+    if (imageGenerator === 'whisk' && !googleCookie) {
       toast.error('Configure o Cookie do Google nas configurações');
+      return false;
+    }
+    if (imageGenerator === 'perchance' && !perchanceUserKey) {
+      toast.error('Configure a UserKey do Perchance nas configurações');
       return false;
     }
 
@@ -184,14 +201,42 @@ export function ImageGallery({
       // Clean the "Cena X:" prefix from the prompt
       const cleanedPrompt = cleanScenePrefix(promptText);
 
-      const { data, error } = await supabase.functions.invoke('generate-whisk-v2', {
-        body: {
-          prompt: cleanedPrompt,
-          cookie: googleCookie,
-          styleTemplate: styleTemplate.trim() || undefined,
-          aspectRatio,
-        },
-      });
+      let data: any;
+      let error: any;
+
+      if (imageGenerator === 'whisk') {
+        // Google Whisk generation
+        const response = await supabase.functions.invoke('generate-whisk-v2', {
+          body: {
+            prompt: cleanedPrompt,
+            cookie: googleCookie,
+            styleTemplate: styleTemplate.trim() || undefined,
+            aspectRatio,
+          },
+        });
+        data = response.data;
+        error = response.error;
+      } else {
+        // Perchance generation
+        const resolutionMap: Record<string, string> = {
+          'landscape': '1280x720',
+          '16:9': '1280x720',
+          'portrait': '720x1280',
+          '9:16': '720x1280',
+          'square': '1024x1024',
+          '1:1': '1024x1024',
+        };
+        
+        const response = await supabase.functions.invoke('generate-perchance-image', {
+          body: {
+            prompt: styleTemplate.trim() ? `${styleTemplate.trim()}, ${cleanedPrompt}` : cleanedPrompt,
+            userKey: perchanceUserKey,
+            resolution: resolutionMap[aspectRatio] || '1280x720',
+          },
+        });
+        data = response.data;
+        error = response.error;
+      }
 
       if (error) throw error;
       
@@ -218,12 +263,13 @@ export function ImageGallery({
 
       await onImageGenerated({
         image_url: imageUrl,
-        prompt_used: data.prompt,
+        prompt_used: data.prompt || cleanedPrompt,
         scene_description: cleanedPrompt.substring(0, 100),
         subject_image_url: subjectImageUrl || undefined,
       });
 
-      toast.success('Imagem gerada com IMAGEN_3_5!');
+      const genName = imageGenerator === 'whisk' ? 'IMAGEN_3_5' : 'Perchance';
+      toast.success(`Imagem gerada com ${genName}!`);
       setPrompt('');
       return true;
     } catch (error) {
@@ -408,7 +454,7 @@ export function ImageGallery({
     await downloadAsZip(displayImages, `todas-imagens-${Date.now()}`);
   };
 
-  const hasCredentials = !!googleCookie;
+  const hasCredentials = imageGenerator === 'whisk' ? !!googleCookie : !!perchanceUserKey;
 
   return (
     <div className="space-y-6">
@@ -438,6 +484,42 @@ export function ImageGallery({
 
       {/* Generation Section */}
       <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+        {/* Generator Selector */}
+        <div className="flex items-center gap-4 p-3 bg-background rounded-lg border">
+          <Label className="text-sm font-medium">Gerador:</Label>
+          <Select value={imageGenerator} onValueChange={(v: ImageGenerator) => setImageGenerator(v)}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="whisk">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  <span>Google Whisk (IMAGEN)</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="perchance">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Perchance (Ilimitado)</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Generator Info */}
+        {imageGenerator === 'whisk' && (
+          <div className="text-xs text-muted-foreground p-2 bg-amber-500/10 rounded border border-amber-500/20">
+            <span className="font-medium text-amber-600">Google Whisk:</span> Usa cookie do Google Labs. Filtro inteligente ativo (termos como "sangue" → "líquido vermelho").
+          </div>
+        )}
+        {imageGenerator === 'perchance' && (
+          <div className="text-xs text-muted-foreground p-2 bg-green-500/10 rounded border border-green-500/20">
+            <span className="font-medium text-green-600">Perchance:</span> 100% gratuito e ilimitado. Suporta 16:9 nativo (1280x720). Menos restrições de conteúdo.
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <Button
             variant={!isBatchMode ? 'secondary' : 'ghost'}
@@ -668,7 +750,10 @@ export function ImageGallery({
 
         {!hasCredentials && (
           <p className="text-sm text-destructive text-center">
-            Configure o Cookie do Google nas configurações para gerar imagens
+            {imageGenerator === 'whisk' 
+              ? 'Configure o Cookie do Google nas configurações para gerar imagens'
+              : 'Configure a UserKey do Perchance nas configurações para gerar imagens'
+            }
           </p>
         )}
       </div>
