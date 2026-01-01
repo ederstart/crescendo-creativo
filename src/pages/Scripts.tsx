@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown } from 'lucide-react';
+import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -98,6 +98,19 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
     }
     navigate(`/ai-studio?automate=true&scriptId=${script.id}`);
     toast.info('Iniciando automação... Aguarde.');
+  };
+
+  const handleGenerateAudio = (script: Script) => {
+    if (!script.content) {
+      toast.error('Roteiro sem conteúdo');
+      return;
+    }
+    navigate('/voice-generator', { 
+      state: { 
+        batchText: script.content,
+        mode: 'batch' 
+      } 
+    });
   };
 
   const toggleSelection = (id: string) => {
@@ -242,6 +255,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                             <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
                             <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                           </DropdownMenuContent>
@@ -297,6 +311,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                                 <DropdownMenuItem onClick={() => copyScriptContent(script)}><Copy className="w-4 h-4 mr-2" />Copiar</DropdownMenuItem>
                                 <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                               </DropdownMenuContent>
