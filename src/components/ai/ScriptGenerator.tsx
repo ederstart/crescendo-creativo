@@ -3,9 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Sparkles, Upload, FileText, X, Star } from 'lucide-react';
+import { Loader2, Sparkles, Upload, FileText, X, Star, Lightbulb, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { Switch } from '@/components/ui/switch';
+import type { ScriptIdea } from '@/hooks/useScriptIdeas';
 
 type ModelType = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
 
@@ -17,6 +19,11 @@ interface ScriptGeneratorProps {
   preferredModel?: string;
   onGenerated: (content: string, model: string) => void;
   onFavoriteModel?: (model: string) => void;
+  // Script ideas integration
+  scriptIdeas?: ScriptIdea[];
+  onIdeaSelect?: (idea: ScriptIdea) => void;
+  showCompletedIdeas?: boolean;
+  onToggleCompletedIdeas?: () => void;
 }
 
 export function ScriptGenerator({ 
@@ -27,11 +34,16 @@ export function ScriptGenerator({
   preferredModel = 'deepseek',
   onGenerated,
   onFavoriteModel,
+  scriptIdeas = [],
+  onIdeaSelect,
+  showCompletedIdeas = false,
+  onToggleCompletedIdeas,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<ModelType>(
     (preferredModel as ModelType) || 'deepseek'
   );
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string>('');
 
   // When template content is set, prepend it to the prompt
   useEffect(() => {
@@ -74,6 +86,23 @@ export function ScriptGenerator({
       toast.success('Arquivo anexado!');
     } catch (error) {
       toast.error('Erro ao ler arquivo');
+    }
+  };
+
+  const handleIdeaSelect = (ideaId: string) => {
+    setSelectedIdeaId(ideaId);
+    const idea = scriptIdeas.find(i => i.id === ideaId);
+    if (idea && onIdeaSelect) {
+      onIdeaSelect(idea);
+      // Add idea title to prompt
+      const titlePrompt = `Tema do vídeo: ${idea.title}`;
+      setPrompt(prev => {
+        if (prev.trim()) {
+          return `${prev}\n\n${titlePrompt}`;
+        }
+        return titlePrompt;
+      });
+      toast.success(`Ideia selecionada: "${idea.title}"`);
     }
   };
 
@@ -133,8 +162,65 @@ export function ScriptGenerator({
   const hasApiKey = !!getApiKey(model);
   const isFavorite = model === preferredModel;
 
+  // Filter ideas based on showCompletedIdeas
+  const filteredIdeas = scriptIdeas.filter(idea => 
+    showCompletedIdeas || idea.status !== 'done'
+  );
+
   return (
     <div className="space-y-4">
+      {/* Script Ideas Selector */}
+      {scriptIdeas.length > 0 && (
+        <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-yellow-500" />
+              <Label>Selecionar da Lista de Ideias</Label>
+            </div>
+            {onToggleCompletedIdeas && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-completed-ideas"
+                  checked={showCompletedIdeas}
+                  onCheckedChange={onToggleCompletedIdeas}
+                />
+                <Label htmlFor="show-completed-ideas" className="text-xs text-muted-foreground flex items-center gap-1">
+                  {showCompletedIdeas ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  Concluídas
+                </Label>
+              </div>
+            )}
+          </div>
+          <Select value={selectedIdeaId} onValueChange={handleIdeaSelect}>
+            <SelectTrigger>
+              <SelectValue placeholder="Escolha uma ideia para começar..." />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredIdeas.map((idea) => (
+                <SelectItem key={idea.id} value={idea.id}>
+                  <div className="flex items-center gap-2">
+                    <span className={idea.status === 'done' ? 'line-through text-muted-foreground' : ''}>
+                      {idea.title}
+                    </span>
+                    {idea.status === 'in_progress' && (
+                      <span className="text-xs text-yellow-500">Em progresso</span>
+                    )}
+                    {idea.status === 'done' && (
+                      <span className="text-xs text-green-500">Concluído</span>
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+              {filteredIdeas.length === 0 && (
+                <SelectItem value="empty" disabled>
+                  Nenhuma ideia disponível
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div>
         <div className="flex items-center justify-between mb-1">
           <Label>Modelo de IA</Label>
