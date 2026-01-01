@@ -32,8 +32,9 @@ import {
 import { useAISettings } from '@/hooks/useAISettings';
 import { toast } from 'sonner';
 import { useVoiceGenerator } from '@/hooks/useVoiceGenerator';
-import { generateSpeech, isModelLoaded, isModelLoading, getLoadProgress, type TTSVoice } from '@/lib/kokoroTTS';
+import { generateSpeech, isModelLoaded, isModelLoading, getLoadProgress, checkModelCached, type TTSVoice } from '@/lib/kokoroTTS';
 import JSZip from 'jszip';
+import { CheckCircle2 as CheckIcon, AlertTriangle } from 'lucide-react';
 
 // Kokoro TTS voices - English only (American and British)
 const KOKORO_VOICES: Record<string, { id: TTSVoice; name: string; gender: 'male' | 'female'; quality?: string }[]> = {
@@ -173,8 +174,16 @@ export default function VoiceGenerator() {
   const [maxCharsPerAudio, setMaxCharsPerAudio] = useState(4000);
   const [batchMode, setBatchMode] = useState<'lines' | 'continuous'>('lines');
   
+  // Model cache status
+  const [modelCached, setModelCached] = useState<boolean | null>(null);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const location = useLocation();
+
+  // Check model cache status on mount
+  useEffect(() => {
+    checkModelCached().then(setModelCached);
+  }, []);
 
   // Load text from navigation state (from Scripts page)
   useEffect(() => {
@@ -616,6 +625,22 @@ export default function VoiceGenerator() {
           <p className="text-sm md:text-base text-muted-foreground">
             Kokoro TTS - 100% local, gratuito e ilimitado
           </p>
+          {/* Model cache status */}
+          <div className="text-xs mt-1">
+            {modelCached === null && (
+              <span className="text-muted-foreground">Verificando cache...</span>
+            )}
+            {modelCached === true && (
+              <span className="text-green-600 flex items-center gap-1">
+                <CheckIcon className="w-3 h-3" /> Modelo em cache - pronto
+              </span>
+            )}
+            {modelCached === false && (
+              <span className="text-amber-600 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> Modelo será baixado (~80MB)
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,87 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Intelligent word replacement for content filtering
+const SMART_REPLACEMENTS: Record<string, string> = {
+  // Violence/Blood -> Visual alternatives
+  'blood': 'dark red liquid, crimson fluid',
+  'sangue': 'liquido vermelho escuro',
+  'bloody': 'covered in dark red',
+  'bleeding': 'with red stains',
+  'gore': 'intense dramatic scene',
+  'gory': 'dramatic intense',
+  'violent': 'intense, dramatic',
+  'violento': 'intenso, dramatico',
+  'wound': 'injury mark, damaged area',
+  'ferida': 'marca de lesao',
+  'cut': 'slash mark',
+  'stab': 'pierce mark',
+  'murder': 'confrontation',
+  'assassinato': 'confrontacao',
+  'kill': 'defeat, overcome',
+  'matar': 'derrotar',
+  'death': 'final moment, ending',
+  'morte': 'momento final',
+  'dead': 'motionless, fallen',
+  'morto': 'imóvel, caído',
+  'corpse': 'fallen figure, motionless body',
+  'cadaver': 'figura caída',
+  
+  // Weapons -> Tools/Objects
+  'gun': 'metal device, tool',
+  'arma': 'ferramenta metalica',
+  'pistol': 'metal device',
+  'rifle': 'long metal tool',
+  'knife': 'sharp blade, cutting tool',
+  'faca': 'lamina afiada',
+  'sword': 'long blade, steel weapon',
+  'espada': 'lamina longa de aco',
+  'weapon': 'tool, equipment',
+  'dagger': 'small blade',
+  'axe': 'heavy tool with blade',
+  
+  // Block adult terms completely
+  'nude': '',
+  'naked': '',
+  'nua': '',
+  'nu': '',
+  'nsfw': '',
+  'explicit': '',
+  'sexual': '',
+  'erotic': '',
+  'erotico': '',
+  'porn': '',
+  'xxx': '',
+};
+
+function smartFilterPrompt(prompt: string): { 
+  filtered: string; 
+  replacements: string[]; 
+  blocked: string[] 
+} {
+  let filtered = prompt;
+  const replacements: string[] = [];
+  const blocked: string[] = [];
+  
+  for (const [term, replacement] of Object.entries(SMART_REPLACEMENTS)) {
+    const regex = new RegExp(`\\b${term}\\b`, 'gi');
+    if (regex.test(filtered)) {
+      if (replacement) {
+        replacements.push(`${term} → ${replacement}`);
+        filtered = filtered.replace(regex, replacement);
+      } else {
+        blocked.push(term);
+        filtered = filtered.replace(regex, '');
+      }
+    }
+  }
+  
+  // Clean extra spaces
+  filtered = filtered.replace(/\s+/g, ' ').trim();
+  
+  return { filtered, replacements, blocked };
+}
+
 // Constantes baseadas na biblioteca @rohitaryal/whisk-api
 const ImageAspectRatio = {
   SQUARE: "IMAGE_ASPECT_RATIO_SQUARE",
@@ -189,6 +270,16 @@ serve(async (req) => {
     if (styleTemplate?.trim()) {
       finalPrompt = `${styleTemplate.trim()}, ${prompt}`;
     }
+
+    // Apply smart content filter
+    const { filtered: safePrompt, replacements, blocked } = smartFilterPrompt(finalPrompt);
+    if (replacements.length > 0) {
+      console.log('[Smart Filter] Replacements:', replacements.join(', '));
+    }
+    if (blocked.length > 0) {
+      console.log('[Smart Filter] Blocked terms:', blocked.join(', '));
+    }
+    finalPrompt = safePrompt;
 
     console.log('=== Iniciando geração de imagem ===');
     console.log('Prompt final:', finalPrompt);

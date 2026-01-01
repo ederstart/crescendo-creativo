@@ -102,10 +102,20 @@ ${batchContext}
 Rules:
 1. Each prompt must be highly visual and descriptive
 2. Include details about lighting, artistic style, camera angle, composition
-3. Maintain visual consistency between scenes
+3. Maintain visual consistency between scenes (same characters, style, color palette)
 4. Prompts must be in English
-5. Return ONLY a valid JSON array with prompts, no additional text
+5. Return ONLY valid JSON, no additional text
 6. Divide this script section into exactly ${sceneCount} proportional parts
+
+**CRITICAL - UNIQUENESS RULES:**
+7. Each prompt MUST describe a COMPLETELY DIFFERENT moment/visual
+8. NEVER use similar descriptions - vary these elements:
+   - Camera angles: close-up, wide shot, aerial view, low angle, POV, over-the-shoulder
+   - Time/lighting: dawn, noon, sunset, night, golden hour, dramatic shadows, backlit
+   - Character poses: different expressions, actions, gestures, positions
+   - Background elements: unique environmental details in each scene
+9. Each prompt needs AT LEAST 3 unique visual elements not present in other prompts
+10. If the script has similar themes, find DISTINCT visual interpretations for each
 
 ${stylePrompt ? `Base style for all scenes: ${stylePrompt}` : ''}
 
@@ -114,7 +124,7 @@ Response format (VALID JSON ONLY):
   "scenes": [
     {
       "number": 1,
-      "prompt": "Detailed image generation prompt in English describing the scene visually"
+      "prompt": "Detailed unique prompt describing this specific moment visually"
     }
   ]
 }`;

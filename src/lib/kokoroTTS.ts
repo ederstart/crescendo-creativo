@@ -126,3 +126,33 @@ export function isModelLoading(): boolean {
 export function getLoadProgress(): number {
   return loadProgress;
 }
+
+/**
+ * Check if model is already cached in browser storage
+ */
+export async function checkModelCached(): Promise<boolean> {
+  // If already loaded in memory, it's cached
+  if (ttsInstance) return true;
+  
+  try {
+    // Check if exists in IndexedDB (where transformers.js stores models)
+    const databases = await indexedDB.databases();
+    const hasTransformersDB = databases.some(db => 
+      db.name?.includes('transformers') || db.name?.includes('onnx')
+    );
+    
+    if (!hasTransformersDB) return false;
+    
+    // Try to open the cache to check for Kokoro files
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+    const hasKokoroFiles = keys.some(req => 
+      req.url.includes('Kokoro-82M') || req.url.includes('kokoro')
+    );
+    
+    return hasKokoroFiles;
+  } catch (error) {
+    console.log('[Kokoro TTS] Cache check failed:', error);
+    return false;
+  }
+}

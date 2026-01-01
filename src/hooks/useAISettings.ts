@@ -9,12 +9,14 @@ interface AISettings {
   gemini_api_key?: string;
   openrouter_api_key?: string;
   google_cookie?: string;
+  perchance_user_key?: string;
   preferred_model_script?: string;
   preferred_model_scene?: string;
   preferred_model_image?: string;
   preferred_claude_model?: string;
   style_template?: string;
   preferred_voice?: string;
+  preferred_image_generator?: 'whisk' | 'perchance';
   // Campos legados (mantidos para compatibilidade)
   whisk_token?: string;
   whisk_session_id?: string;
