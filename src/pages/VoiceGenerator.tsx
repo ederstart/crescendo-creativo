@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -170,8 +171,22 @@ export default function VoiceGenerator() {
   // Smart split options
   const [autoSplit, setAutoSplit] = useState(true);
   const [maxCharsPerAudio, setMaxCharsPerAudio] = useState(4000);
+  const [batchMode, setBatchMode] = useState<'lines' | 'continuous'>('lines');
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const location = useLocation();
+
+  // Load text from navigation state (from Scripts page)
+  useEffect(() => {
+    if (location.state?.batchText) {
+      setBatchText(location.state.batchText);
+      setActiveTab('batch');
+      setBatchMode('continuous');
+      toast.success('Roteiro carregado! Configure as opções e gere os áudios.');
+      // Clear state to avoid reloading on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Load preferred voice
   useEffect(() => {
@@ -213,6 +228,18 @@ export default function VoiceGenerator() {
 
   // Calculate batch stats
   const calculateBatchStats = () => {
+    if (batchMode === 'continuous') {
+      // Continuous mode: join all text and split by char limit
+      const fullText = batchText.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      const chunks = fullText.length > 0 ? smartSplitText(fullText, maxCharsPerAudio) : [];
+      return {
+        lineCount: batchText.split('\n').filter(l => l.trim()).length,
+        totalChars: fullText.length,
+        estimatedAudios: chunks.length,
+      };
+    }
+    
+    // Lines mode: each line is a separate audio
     const lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     const totalChars = lines.reduce((acc, l) => acc + l.length, 0);
     
@@ -289,22 +316,34 @@ export default function VoiceGenerator() {
 
   // Parse batch text into items with smart splitting
   const parseBatchText = (): BatchItem[] => {
-    let lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let texts: string[] = [];
     
-    if (autoSplit) {
-      // Apply smart splitting to each line that exceeds the limit
-      const splitLines: string[] = [];
-      for (const line of lines) {
-        if (line.length > maxCharsPerAudio) {
-          splitLines.push(...smartSplitText(line, maxCharsPerAudio));
-        } else {
-          splitLines.push(line);
-        }
+    if (batchMode === 'continuous') {
+      // Continuous mode: join all text and split by char limit only
+      const fullText = batchText.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (fullText.length > 0) {
+        texts = smartSplitText(fullText, maxCharsPerAudio);
       }
-      lines = splitLines;
+    } else {
+      // Lines mode: each line is a separate item
+      let lines = batchText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      if (autoSplit) {
+        // Apply smart splitting to each line that exceeds the limit
+        const splitLines: string[] = [];
+        for (const line of lines) {
+          if (line.length > maxCharsPerAudio) {
+            splitLines.push(...smartSplitText(line, maxCharsPerAudio));
+          } else {
+            splitLines.push(line);
+          }
+        }
+        lines = splitLines;
+      }
+      texts = lines;
     }
     
-    const items: BatchItem[] = lines.map((text, index) => ({
+    const items: BatchItem[] = texts.map((text, index) => ({
       index,
       text,
       status: 'pending',
@@ -881,51 +920,69 @@ export default function VoiceGenerator() {
                   {/* Stats display */}
                   <div className="flex flex-wrap gap-4 text-sm">
                     <span className="text-muted-foreground">
-                      {batchStats.lineCount} {batchStats.lineCount === 1 ? 'linha' : 'linhas'}
-                    </span>
-                    <span className="text-muted-foreground">
                       {batchStats.totalChars.toLocaleString('pt-BR')} caracteres
                     </span>
-                    {autoSplit && batchStats.estimatedAudios !== batchStats.lineCount && (
-                      <span className="text-primary font-medium">
-                        → {batchStats.estimatedAudios} áudios após divisão
-                      </span>
-                    )}
+                    <span className="text-primary font-medium">
+                      → {batchStats.estimatedAudios} {batchStats.estimatedAudios === 1 ? 'áudio' : 'áudios'}
+                    </span>
                   </div>
 
-                  {/* Smart split options */}
+                  {/* Batch mode selector */}
                   <div className="p-4 bg-muted/50 rounded-lg space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Scissors className="w-4 h-4 text-muted-foreground" />
-                        <Label htmlFor="auto-split">Dividir automaticamente textos longos</Label>
-                      </div>
-                      <Switch
-                        id="auto-split"
-                        checked={autoSplit}
-                        onCheckedChange={setAutoSplit}
-                        disabled={batchProcessing}
-                      />
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Modo de divisão</Label>
+                      <Select value={batchMode} onValueChange={(v) => setBatchMode(v as 'lines' | 'continuous')} disabled={batchProcessing}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="continuous">
+                            <div className="flex flex-col items-start">
+                              <span>Texto Contínuo</span>
+                              <span className="text-xs text-muted-foreground">Ignora quebras de linha, divide apenas por limite de caracteres</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="lines">
+                            <div className="flex flex-col items-start">
+                              <span>Uma linha por áudio</span>
+                              <span className="text-xs text-muted-foreground">Cada linha vira um áudio separado</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    
-                    {autoSplit && (
-                      <div className="flex items-center gap-4">
-                        <Label htmlFor="max-chars" className="whitespace-nowrap text-sm">
-                          Limite por áudio:
-                        </Label>
-                        <Input
-                          id="max-chars"
-                          type="number"
-                          value={maxCharsPerAudio}
-                          onChange={(e) => setMaxCharsPerAudio(Math.max(500, Math.min(5000, parseInt(e.target.value) || 4000)))}
-                          className="w-24"
+
+                    {batchMode === 'lines' && (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Scissors className="w-4 h-4 text-muted-foreground" />
+                          <Label htmlFor="auto-split" className="text-sm">Dividir linhas longas</Label>
+                        </div>
+                        <Switch
+                          id="auto-split"
+                          checked={autoSplit}
+                          onCheckedChange={setAutoSplit}
                           disabled={batchProcessing}
-                          min={500}
-                          max={5000}
                         />
-                        <span className="text-xs text-muted-foreground">caracteres</span>
                       </div>
                     )}
+                    
+                    <div className="flex items-center gap-4">
+                      <Label htmlFor="max-chars" className="whitespace-nowrap text-sm">
+                        Limite por áudio:
+                      </Label>
+                      <Input
+                        id="max-chars"
+                        type="number"
+                        value={maxCharsPerAudio}
+                        onChange={(e) => setMaxCharsPerAudio(Math.max(500, Math.min(5000, parseInt(e.target.value) || 4000)))}
+                        className="w-24"
+                        disabled={batchProcessing}
+                        min={500}
+                        max={5000}
+                      />
+                      <span className="text-xs text-muted-foreground">caracteres</span>
+                    </div>
                     
                     <p className="text-xs text-muted-foreground">
                       ✂️ Divide em pontuação (. ! ? ; :) sem cortar palavras
