@@ -2,11 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Expand, Copy, Save, Star, FileText, StopCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Expand, Copy, Save, Star, FileText, StopCircle, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { usePromptTemplates } from '@/hooks/usePromptTemplates';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface Script {
   id: string;
@@ -33,6 +40,19 @@ interface ScriptExpanderProps {
   onFavoriteModel?: (model: string) => void;
 }
 
+const DEFAULT_EXPANSION_PROMPT = `Você é um roteirista profissional. Sua tarefa é EXPANDIR o trecho de roteiro abaixo.
+
+REGRAS OBRIGATÓRIAS:
+- O texto expandido DEVE ter MAIS de {TARGET_CHARS} caracteres
+- Mantenha o estilo e tom do texto original
+- Adicione descrições visuais detalhadas
+- Expanda diálogos com mais naturalidade
+- Inclua direções de câmera quando apropriado
+- NÃO use marcadores como #, *, /, ---, travessões decorativos
+- Texto deve ser limpo, apenas com quebras de linha normais
+- NÃO adicione marcadores de cena novos, apenas expanda o conteúdo
+- Mantenha a formatação consistente e legível`;
+
 export function ScriptExpander({
   groqApiKey,
   geminiApiKey,
@@ -42,15 +62,46 @@ export function ScriptExpander({
   onFavoriteModel,
 }: ScriptExpanderProps) {
   const { user } = useAuth();
+  const { templates, createTemplate, updateTemplate } = usePromptTemplates('expansion');
+  
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [selectedScriptId, setSelectedScriptId] = useState('');
   const [loadingScripts, setLoadingScripts] = useState(true);
   const [parts, setParts] = useState<ScriptPart[]>([]);
   const [expandingAll, setExpandingAll] = useState(false);
-  const [showExpanded, setShowExpanded] = useState<Set<number>>(new Set());
+  
+  // User-controlled division
+  const [numberOfParts, setNumberOfParts] = useState<number>(() => {
+    return parseInt(localStorage.getItem('expander-num-parts') || '2');
+  });
+  const [targetCharsPerPart, setTargetCharsPerPart] = useState<number>(() => {
+    return parseInt(localStorage.getItem('expander-target-chars') || '5000');
+  });
+  
+  // Custom prompt
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [showPromptSettings, setShowPromptSettings] = useState(false);
+  const [promptTemplateName, setPromptTemplateName] = useState('');
   
   const stopRef = useRef(false);
+
+  // Load saved prompt template
+  useEffect(() => {
+    const defaultTemplate = templates.find(t => t.is_default);
+    if (defaultTemplate) {
+      setCustomPrompt(defaultTemplate.content);
+    }
+  }, [templates]);
+
+  // Persist settings
+  useEffect(() => {
+    localStorage.setItem('expander-num-parts', numberOfParts.toString());
+  }, [numberOfParts]);
+
+  useEffect(() => {
+    localStorage.setItem('expander-target-chars', targetCharsPerPart.toString());
+  }, [targetCharsPerPart]);
 
   useEffect(() => {
     if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
@@ -68,6 +119,7 @@ export function ScriptExpander({
       .from('scripts')
       .select('id, title, content, status')
       .eq('user_id', user?.id)
+      .neq('status', 'done') // Exclude completed scripts
       .order('updated_at', { ascending: false });
 
     if (!error && data) {
@@ -85,50 +137,77 @@ export function ScriptExpander({
 
   const selectedScript = scripts.find(s => s.id === selectedScriptId);
 
-  // Divide script into parts (by paragraphs or scene markers)
-  const divideIntoParts = (content: string): string[] => {
-    // Try to find scene markers first
-    const sceneMarkers = content.split(/(?=(?:CENA|Cena|Scene)\s*\d+[:.]?)/i);
-    if (sceneMarkers.length > 1 && sceneMarkers[0].trim() === '') {
-      sceneMarkers.shift();
-    }
+  // Divide script into N equal parts
+  const divideIntoParts = (content: string, numParts: number): string[] => {
+    const cleanContent = content.trim();
+    const partLength = Math.ceil(cleanContent.length / numParts);
+    const result: string[] = [];
     
-    if (sceneMarkers.length > 1) {
-      return sceneMarkers.filter(p => p.trim());
-    }
-    
-    // Otherwise, split by double newlines (paragraphs)
-    const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
-    
-    // Group small paragraphs together (target ~500 chars per part)
-    const grouped: string[] = [];
-    let current = '';
-    
-    for (const p of paragraphs) {
-      if (current.length + p.length < 500) {
-        current += (current ? '\n\n' : '') + p;
-      } else {
-        if (current) grouped.push(current);
-        current = p;
+    for (let i = 0; i < numParts; i++) {
+      const start = i * partLength;
+      let end = start + partLength;
+      
+      // Try to find a natural break point (newline or period)
+      if (end < cleanContent.length) {
+        const searchStart = Math.max(end - 100, start);
+        const searchEnd = Math.min(end + 100, cleanContent.length);
+        const segment = cleanContent.substring(searchStart, searchEnd);
+        
+        // Find the best break point
+        const newlinePos = segment.lastIndexOf('\n');
+        const periodPos = segment.lastIndexOf('. ');
+        
+        if (newlinePos > 0) {
+          end = searchStart + newlinePos + 1;
+        } else if (periodPos > 0) {
+          end = searchStart + periodPos + 2;
+        }
       }
+      
+      result.push(cleanContent.substring(start, end).trim());
     }
-    if (current) grouped.push(current);
     
-    return grouped;
+    return result.filter(p => p.length > 0);
   };
 
   const handleSelectScript = (scriptId: string) => {
     setSelectedScriptId(scriptId);
-    const script = scripts.find(s => s.id === scriptId);
-    if (script) {
-      const divided = divideIntoParts(script.content);
-      setParts(divided.map((text, index) => ({
-        index,
-        original: text,
-        expanded: null,
-        isExpanding: false,
-      })));
-    }
+    setParts([]); // Clear parts until user clicks divide
+  };
+
+  const handleDivideScript = () => {
+    if (!selectedScript) return;
+    
+    const divided = divideIntoParts(selectedScript.content, numberOfParts);
+    setParts(divided.map((text, index) => ({
+      index,
+      original: text,
+      expanded: null,
+      isExpanding: false,
+    })));
+    
+    toast.success(`Roteiro dividido em ${divided.length} partes`);
+  };
+
+  const getEffectivePrompt = (): string => {
+    const basePrompt = customPrompt.trim() || DEFAULT_EXPANSION_PROMPT;
+    return basePrompt.replace('{TARGET_CHARS}', targetCharsPerPart.toString());
+  };
+
+  const cleanExpandedText = (text: string): string => {
+    return text
+      .replace(/^#+\s*/gm, '') // Remove # headers
+      .replace(/^\*+\s*/gm, '') // Remove * bullets
+      .replace(/^-+\s*/gm, '') // Remove - bullets
+      .replace(/^\/+\s*/gm, '') // Remove / markers
+      .replace(/^—+\s*/gm, '') // Remove em-dashes
+      .replace(/^–+\s*/gm, '') // Remove en-dashes
+      .replace(/\*\*/g, '') // Remove bold markers
+      .replace(/\*/g, '') // Remove italic markers
+      .replace(/_{2,}/g, '') // Remove multiple underscores
+      .replace(/-{3,}/g, '\n') // Replace horizontal rules with newline
+      .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+      .trim();
   };
 
   const expandPart = async (index: number) => {
@@ -146,20 +225,11 @@ export function ScriptExpander({
     ));
 
     try {
-      const systemPrompt = `Você é um roteirista profissional. Sua tarefa é EXPANDIR o trecho de roteiro abaixo, adicionando mais detalhes, descrições visuais, diálogos e emoção. 
-      
-REGRAS:
-- Mantenha o estilo e tom do texto original
-- Adicione descrições visuais detalhadas
-- Expanda diálogos com mais naturalidade
-- Inclua direções de câmera quando apropriado
-- O texto expandido deve ter pelo menos o DOBRO do tamanho original
-- NÃO adicione marcadores de cena novos, apenas expanda o conteúdo
-- Mantenha a formatação consistente`;
+      const systemPrompt = getEffectivePrompt();
 
       const { data, error } = await supabase.functions.invoke('generate-script', {
         body: {
-          prompt: `Expanda este trecho de roteiro:\n\n${part.original}`,
+          prompt: `Expanda este trecho de roteiro para ter MAIS de ${targetCharsPerPart} caracteres:\n\n${part.original}`,
           model,
           apiKey,
           systemPrompt,
@@ -169,12 +239,13 @@ REGRAS:
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
+      const cleanedText = cleanExpandedText(data.generatedText);
+
       setParts(prev => prev.map((p, i) => 
-        i === index ? { ...p, expanded: data.generatedText, isExpanding: false } : p
+        i === index ? { ...p, expanded: cleanedText, isExpanding: false } : p
       ));
       
-      setShowExpanded(prev => new Set([...prev, index]));
-      toast.success(`Parte ${index + 1} expandida!`);
+      toast.success(`Parte ${index + 1} expandida! (${cleanedText.length} chars)`);
     } catch (error) {
       console.error('Error expanding part:', error);
       toast.error('Erro ao expandir');
@@ -210,22 +281,31 @@ REGRAS:
     }
 
     setExpandingAll(false);
+    
+    if (!stopRef.current) {
+      toast.success('Todas as partes foram expandidas!');
+    }
   };
 
   const handleStop = () => {
     stopRef.current = true;
   };
 
-  const toggleShowExpanded = (index: number) => {
-    setShowExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
+  const savePromptTemplate = async () => {
+    if (!promptTemplateName.trim()) {
+      toast.error('Digite um nome para o template');
+      return;
+    }
+    
+    await createTemplate({
+      name: promptTemplateName,
+      type: 'expansion',
+      content: customPrompt || DEFAULT_EXPANSION_PROMPT,
+      is_default: templates.length === 0,
     });
+    
+    setPromptTemplateName('');
+    toast.success('Template salvo!');
   };
 
   const getFinalScript = (): string => {
@@ -246,9 +326,12 @@ REGRAS:
   const hasApiKey = !!getApiKey(model);
   const isFavorite = model === preferredModel;
   const expandedCount = parts.filter(p => p.expanded).length;
+  const totalOriginalChars = selectedScript?.content?.length || 0;
+  const estimatedFinalChars = numberOfParts * targetCharsPerPart;
 
   return (
     <div className="space-y-4">
+      {/* Script Selection */}
       <div>
         <Label>Selecionar Roteiro para Expandir</Label>
         <Select value={selectedScriptId} onValueChange={handleSelectScript}>
@@ -269,42 +352,159 @@ REGRAS:
             ))}
           </SelectContent>
         </Select>
+        {scripts.length === 0 && !loadingScripts && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Nenhum roteiro disponível (roteiros concluídos são ocultados)
+          </p>
+        )}
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label>Modelo de IA</Label>
-          {onFavoriteModel && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onFavoriteModel(model)}
-              className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
+      {selectedScript && (
+        <>
+          {/* Division Settings */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Dividir em quantas partes?</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={numberOfParts}
+                onChange={(e) => setNumberOfParts(Math.max(1, parseInt(e.target.value) || 1))}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Atual: {totalOriginalChars} chars → ~{Math.ceil(totalOriginalChars / numberOfParts)} chars/parte
+              </p>
+            </div>
+            <div>
+              <Label>Caracteres por parte (meta)</Label>
+              <Input
+                type="number"
+                min={500}
+                step={500}
+                value={targetCharsPerPart}
+                onChange={(e) => setTargetCharsPerPart(Math.max(500, parseInt(e.target.value) || 500))}
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Estimado final: ~{estimatedFinalChars.toLocaleString()} chars
+              </p>
+            </div>
+          </div>
+
+          {/* Custom Prompt Settings */}
+          <Collapsible open={showPromptSettings} onOpenChange={setShowPromptSettings}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <Settings2 className="w-4 h-4" />
+                  Personalizar Prompt
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {customPrompt ? 'Customizado' : 'Padrão'}
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 mt-2">
+              <div>
+                <Label>Prompt de Expansão (opcional)</Label>
+                <Textarea
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  placeholder={DEFAULT_EXPANSION_PROMPT}
+                  className="mt-1 min-h-[150px] text-xs"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use {'{TARGET_CHARS}'} para inserir o número de caracteres alvo
+                </p>
+              </div>
+              
+              {templates.length > 0 && (
+                <div>
+                  <Label>Templates Salvos</Label>
+                  <Select onValueChange={(id) => {
+                    const t = templates.find(t => t.id === id);
+                    if (t) setCustomPrompt(t.content);
+                  }}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Carregar template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} {t.is_default && '⭐'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nome do template..."
+                  value={promptTemplateName}
+                  onChange={(e) => setPromptTemplateName(e.target.value)}
+                />
+                <Button variant="secondary" size="sm" onClick={savePromptTemplate}>
+                  Salvar Template
+                </Button>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* AI Model Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label>Modelo de IA</Label>
+              {onFavoriteModel && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onFavoriteModel(model)}
+                  className={isFavorite ? 'text-yellow-500' : 'text-muted-foreground'}
+                >
+                  <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+                  {isFavorite ? 'Favorito' : 'Favoritar'}
+                </Button>
+              )}
+            </div>
+            <Select value={model} onValueChange={(v) => setModel(v as AIModel)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="deepseek">DeepSeek R1</SelectItem>
+                <SelectItem value="llama">Llama 3.3 70B</SelectItem>
+                <SelectItem value="qwen">Qwen3</SelectItem>
+                <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
+                <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Divide Button */}
+          {parts.length === 0 && (
+            <Button 
+              variant="fire" 
+              className="w-full" 
+              onClick={handleDivideScript}
+              disabled={!hasApiKey}
             >
-              <Star className={`w-4 h-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-              {isFavorite ? 'Favorito' : 'Favoritar'}
+              <Expand className="w-4 h-4 mr-2" />
+              Dividir em {numberOfParts} partes
             </Button>
           )}
-        </div>
-        <Select value={model} onValueChange={(v) => setModel(v as AIModel)}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="deepseek">DeepSeek R1</SelectItem>
-            <SelectItem value="llama">Llama 3.3 70B</SelectItem>
-            <SelectItem value="qwen">Qwen3</SelectItem>
-            <SelectItem value="groq">Groq (Llama 3.3)</SelectItem>
-            <SelectItem value="gemini">Gemini 2.5 Flash</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+        </>
+      )}
 
+      {/* Parts List */}
       {parts.length > 0 && (
         <>
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {parts.length} partes detectadas • {expandedCount} expandidas
+              {parts.length} partes • {expandedCount} expandidas
             </p>
             <div className="flex gap-2">
               {expandingAll ? (
@@ -320,7 +520,7 @@ REGRAS:
                   disabled={!hasApiKey || expandedCount === parts.length}
                 >
                   <Expand className="w-4 h-4 mr-2" />
-                  Expandir Tudo
+                  Expandir Todas
                 </Button>
               )}
             </div>
@@ -330,55 +530,49 @@ REGRAS:
             {parts.map((part, index) => (
               <div key={index} className="border rounded-lg p-3 bg-muted/30">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Parte {index + 1}</span>
-                  <div className="flex gap-2">
-                    {part.expanded && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleShowExpanded(index)}
-                      >
-                        {showExpanded.has(index) ? (
-                          <><ChevronUp className="w-4 h-4 mr-1" />Ocultar</>
-                        ) : (
-                          <><ChevronDown className="w-4 h-4 mr-1" />Ver Expandido</>
-                        )}
-                      </Button>
+                  <span className="text-sm font-medium">
+                    Parte {index + 1} 
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({part.original.length} → {part.expanded ? part.expanded.length : `meta: ${targetCharsPerPart}`} chars)
+                    </span>
+                  </span>
+                  <Button
+                    variant={part.expanded ? "secondary" : "fire"}
+                    size="sm"
+                    onClick={() => expandPart(index)}
+                    disabled={part.isExpanding || !hasApiKey}
+                  >
+                    {part.isExpanding ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <><Expand className="w-4 h-4 mr-1" />{part.expanded ? 'Re-expandir' : 'Expandir'}</>
                     )}
-                    <Button
-                      variant={part.expanded ? "secondary" : "fire"}
-                      size="sm"
-                      onClick={() => expandPart(index)}
-                      disabled={part.isExpanding || !hasApiKey}
-                    >
-                      {part.isExpanding ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <><Expand className="w-4 h-4 mr-1" />{part.expanded ? 'Re-expandir' : 'Expandir'}</>
-                      )}
-                    </Button>
-                  </div>
+                  </Button>
                 </div>
                 
-                <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                  Original: {part.original.substring(0, 150)}...
-                </p>
+                <div className="text-xs bg-background/50 rounded p-2 mb-2">
+                  <span className="text-muted-foreground">Original: </span>
+                  {part.original.substring(0, 200)}...
+                </div>
                 
-                {part.expanded && showExpanded.has(index) && (
-                  <div className="mt-2 p-2 bg-background rounded border">
-                    <p className="text-xs text-muted-foreground mb-1">Expandido:</p>
-                    <p className="text-sm whitespace-pre-wrap">{part.expanded}</p>
+                {part.expanded && (
+                  <div className="text-xs bg-primary/10 rounded p-2 border-l-2 border-primary">
+                    <span className="text-primary font-medium">Expandido: </span>
+                    <div className="whitespace-pre-wrap mt-1 text-foreground">
+                      {part.expanded}
+                    </div>
                   </div>
                 )}
               </div>
             ))}
           </div>
 
-          {expandedCount > 0 && (
+          {/* Final Actions */}
+          {expandedCount === parts.length && expandedCount > 0 && (
             <div className="flex gap-2 pt-4 border-t">
               <Button variant="secondary" onClick={copyFinalScript} className="flex-1">
                 <Copy className="w-4 h-4 mr-2" />
-                Copiar Roteiro Final
+                Copiar Roteiro Final ({getFinalScript().length} chars)
               </Button>
               <Button variant="fire" onClick={saveFinalScript} className="flex-1">
                 <Save className="w-4 h-4 mr-2" />

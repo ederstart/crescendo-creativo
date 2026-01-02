@@ -3,17 +3,19 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
+export type PromptTemplateType = 'script' | 'scene' | 'expansion';
+
 interface PromptTemplate {
   id: string;
   name: string;
-  type: 'script' | 'scene';
+  type: PromptTemplateType;
   content: string;
   is_default: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export function usePromptTemplates(type?: 'script' | 'scene') {
+export function usePromptTemplates(type?: PromptTemplateType) {
   const { user } = useAuth();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,7 @@ export function usePromptTemplates(type?: 'script' | 'scene') {
     }
   };
 
-  const setDefaultTemplate = async (id: string, templateType: 'script' | 'scene') => {
+  const setDefaultTemplate = async (id: string, templateType: PromptTemplateType) => {
     // First, unset all defaults for this type
     await supabase
       .from('prompt_templates')
