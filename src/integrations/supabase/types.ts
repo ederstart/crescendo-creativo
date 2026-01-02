@@ -183,6 +183,44 @@ export type Database = {
           },
         ]
       }
+      generated_scene_prompts: {
+        Row: {
+          created_at: string | null
+          id: string
+          prompts: Json
+          script_id: string | null
+          script_title: string
+          style_prompt: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          prompts: Json
+          script_id?: string | null
+          script_title: string
+          style_prompt?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          prompts?: Json
+          script_id?: string | null
+          script_title?: string
+          style_prompt?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_scene_prompts_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mood_board_items: {
         Row: {
           created_at: string | null
@@ -404,6 +442,7 @@ export type Database = {
           content: string | null
           created_at: string | null
           id: string
+          is_archived: boolean | null
           project_id: string | null
           status: string | null
           title: string
@@ -414,6 +453,7 @@ export type Database = {
           content?: string | null
           created_at?: string | null
           id?: string
+          is_archived?: boolean | null
           project_id?: string | null
           status?: string | null
           title: string
@@ -424,6 +464,7 @@ export type Database = {
           content?: string | null
           created_at?: string | null
           id?: string
+          is_archived?: boolean | null
           project_id?: string | null
           status?: string | null
           title?: string

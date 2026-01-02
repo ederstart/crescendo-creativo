@@ -227,7 +227,7 @@ export function ImageGallery({
         subject_image_url: subjectImageUrl || undefined,
       });
 
-      toast.success('Imagem gerada com IMAGEN_3_5!');
+      toast.success('Imagem gerada com sucesso!');
       setPrompt('');
       return true;
     } catch (error) {
@@ -627,7 +627,7 @@ export function ImageGallery({
                 ) : (
                   <>
                     <ImageIcon className="w-4 h-4 mr-2" />
-                    Gerar Todas (IMAGEN_3_5)
+                    Gerar Todas
                   </>
                 )}
               </Button>
@@ -668,7 +668,7 @@ export function ImageGallery({
               ) : (
                 <>
                   <Plus className="w-4 h-4 mr-2" />
-                  Gerar Imagem (IMAGEN_3_5)
+                  Gerar Imagem
                 </>
               )}
             </Button>

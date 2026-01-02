@@ -10,7 +10,10 @@ import {
   Sparkles,
   CheckCircle2,
   Circle,
-  Clock
+  Clock,
+  Eye,
+  EyeOff,
+  X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,6 +34,8 @@ export function ScriptIdeasList() {
   const [newIdea, setNewIdea] = useState('');
   const [loading, setLoading] = useState(true);
   const [batchMode, setBatchMode] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (user) {
@@ -114,8 +119,52 @@ export function ScriptIdeasList() {
       toast.error('Erro ao excluir ideia');
     } else {
       setIdeas(prev => prev.filter(i => i.id !== id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       toast.success('Ideia excluída');
     }
+  };
+
+  const deleteSelectedIdeas = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Excluir ${selectedIds.size} ideias?`)) return;
+    
+    const { error } = await supabase
+      .from('script_ideas')
+      .delete()
+      .in('id', Array.from(selectedIds));
+
+    if (error) {
+      toast.error('Erro ao excluir ideias');
+    } else {
+      setIdeas(prev => prev.filter(i => !selectedIds.has(i.id)));
+      toast.success(`${selectedIds.size} ideias excluídas!`);
+      setSelectedIds(new Set());
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    const visibleIds = filteredIdeas.map(i => i.id);
+    setSelectedIds(new Set(visibleIds));
+  };
+
+  const deselectAll = () => {
+    setSelectedIds(new Set());
   };
 
   const toggleStatus = async (id: string, currentStatus: string) => {
@@ -161,6 +210,16 @@ export function ScriptIdeasList() {
     }
   };
 
+  // Filter ideas based on showCompleted
+  const filteredIdeas = ideas.filter(idea => showCompleted || idea.status !== 'done');
+
+  // Count by status
+  const counts = {
+    pending: ideas.filter(i => i.status === 'pending').length,
+    in_progress: ideas.filter(i => i.status === 'in_progress').length,
+    done: ideas.filter(i => i.status === 'done').length,
+  };
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -171,6 +230,19 @@ export function ScriptIdeasList() {
 
   return (
     <div className="space-y-6">
+      {/* Status counters */}
+      <div className="flex gap-4 text-sm text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Circle className="w-3 h-3" /> {counts.pending} pendentes
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-secondary" /> {counts.in_progress} em progresso
+        </span>
+        <span className="flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3 text-green-500" /> {counts.done} concluídas
+        </span>
+      </div>
+
       {/* Add new idea */}
       <div className="space-y-2">
         <div className="flex gap-2">
@@ -180,6 +252,23 @@ export function ScriptIdeasList() {
             onClick={() => setBatchMode(!batchMode)}
           >
             {batchMode ? "Modo Único" : "Adicionar em Lote"}
+          </Button>
+          <Button
+            variant={showCompleted ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowCompleted(!showCompleted)}
+          >
+            {showCompleted ? (
+              <>
+                <EyeOff className="w-4 h-4 mr-2" />
+                Ocultar Concluídas
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4 mr-2" />
+                Mostrar Concluídas ({counts.done})
+              </>
+            )}
           </Button>
         </div>
         {batchMode ? (
@@ -218,26 +307,59 @@ export function ScriptIdeasList() {
         )}
       </div>
 
+      {/* Selection bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 flex items-center justify-between">
+          <span className="text-sm font-medium">{selectedIds.size} ideia(s) selecionada(s)</span>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={deselectAll}>
+              <X className="w-4 h-4 mr-1" />
+              Limpar
+            </Button>
+            <Button variant="destructive" size="sm" onClick={deleteSelectedIdeas}>
+              <Trash2 className="w-4 h-4 mr-1" />
+              Excluir Selecionadas
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Ideas list */}
-      {ideas.length === 0 ? (
+      {filteredIdeas.length === 0 ? (
         <div className="text-center py-12 glass rounded-xl">
           <Sparkles className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            Nenhuma ideia ainda
+            {showCompleted ? 'Nenhuma ideia ainda' : 'Nenhuma ideia pendente'}
           </h3>
           <p className="text-muted-foreground">
-            Adicione títulos para seus próximos vídeos
+            {showCompleted ? 'Adicione títulos para seus próximos vídeos' : 'Todas as ideias foram concluídas! 🎉'}
           </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {ideas.map((idea) => (
+          {/* Select all */}
+          <div className="flex items-center gap-2 mb-2">
+            <Checkbox
+              checked={selectedIds.size === filteredIdeas.length && filteredIdeas.length > 0}
+              onCheckedChange={(checked) => checked ? selectAllVisible() : deselectAll()}
+            />
+            <span className="text-xs text-muted-foreground">
+              Selecionar todas ({filteredIdeas.length})
+            </span>
+          </div>
+
+          {filteredIdeas.map((idea) => (
             <div
               key={idea.id}
               className={`glass rounded-lg p-4 flex items-center gap-4 group ${
                 idea.status === 'done' ? 'opacity-60' : ''
-              }`}
+              } ${selectedIds.has(idea.id) ? 'ring-2 ring-primary' : ''}`}
             >
+              <Checkbox
+                checked={selectedIds.has(idea.id)}
+                onCheckedChange={() => toggleSelection(idea.id)}
+              />
+
               <button
                 onClick={() => toggleStatus(idea.id, idea.status)}
                 className="flex-shrink-0 hover:scale-110 transition-transform"

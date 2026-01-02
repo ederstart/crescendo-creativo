@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2 } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2, Expand } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -14,6 +14,7 @@ import { ScriptGenerator } from '@/components/ai/ScriptGenerator';
 import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
+import { ScriptExpander } from '@/components/ai/ScriptExpander';
 import { toast } from 'sonner';
 import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -227,7 +228,7 @@ export default function AIStudio() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5">
           <TabsTrigger 
             value="script" 
             className={`flex items-center gap-2 transition-all ${activeTab === 'script' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
@@ -241,6 +242,13 @@ export default function AIStudio() {
           >
             <Layers className="w-4 h-4" />
             Multi-Etapas
+          </TabsTrigger>
+          <TabsTrigger 
+            value="expand" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'expand' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
+            <Expand className="w-4 h-4" />
+            Expansão
           </TabsTrigger>
           <TabsTrigger 
             value="scene" 
@@ -363,6 +371,28 @@ export default function AIStudio() {
           </div>
         </TabsContent>
 
+        <TabsContent value="expand" className="space-y-6">
+          <div className="glass rounded-xl p-6 max-w-3xl mx-auto">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Expansão de Roteiro</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Selecione um roteiro existente e expanda cada parte com mais detalhes, descrições e diálogos.
+            </p>
+            <ScriptExpander
+              groqApiKey={settings?.groq_api_key}
+              geminiApiKey={settings?.gemini_api_key}
+              openrouterApiKey={settings?.openrouter_api_key}
+              preferredModel={settings?.preferred_model_script || 'groq'}
+              onComplete={(script, title) => {
+                setGeneratedScript(script);
+                setScriptTitle(title);
+                setActiveTab('script');
+                toast.success('Roteiro expandido! Salve na aba "Roteiro".');
+              }}
+              onFavoriteModel={(model) => handleFavoriteModel('script', model)}
+            />
+          </div>
+        </TabsContent>
+
         <TabsContent value="scene" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="glass rounded-xl p-6">
@@ -405,7 +435,7 @@ export default function AIStudio() {
 
         <TabsContent value="images">
           <div className="glass rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens (IMAGEN_3_5)</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens</h3>
             <ImageGallery
               googleCookie={settings?.google_cookie}
               styleTemplate={settings?.style_template}

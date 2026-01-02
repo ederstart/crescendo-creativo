@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown, Volume2 } from 'lucide-react';
+import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown, Volume2, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,6 +17,7 @@ interface Script {
   title: string;
   content: string;
   status: 'draft' | 'in_progress' | 'completed';
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +40,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
   // Hide completed by default
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(['draft', 'in_progress']));
   const [showFilters, setShowFilters] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   
   // Persisted preferences
   const [viewMode, setViewMode] = useState<ViewMode>(() => 
@@ -48,7 +50,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
     (localStorage.getItem('scripts-sort-mode') as SortMode) || 'created_at'
   );
 
-  useEffect(() => { if (user) fetchScripts(); }, [user, sortMode]);
+  useEffect(() => { if (user) fetchScripts(); }, [user, sortMode, showArchived]);
 
   useEffect(() => {
     if (onSelectionChange) onSelectionChange(scripts.filter(s => selectedIds.has(s.id)));
@@ -66,7 +68,14 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
     setLoading(true);
     const orderColumn = sortMode === 'title' ? 'title' : sortMode;
     const ascending = sortMode === 'title';
-    const { data, error } = await supabase.from('scripts').select('*').eq('user_id', user?.id).order(orderColumn, { ascending });
+    
+    let query = supabase.from('scripts').select('*').eq('user_id', user?.id);
+    
+    if (!showArchived) {
+      query = query.eq('is_archived', false);
+    }
+    
+    const { data, error } = await query.order(orderColumn, { ascending });
     if (error) toast.error('Erro ao carregar roteiros');
     else setScripts(data || []);
     setLoading(false);
@@ -83,6 +92,25 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
     const { error } = await supabase.from('scripts').delete().in('id', Array.from(selectedIds));
     if (error) toast.error('Erro ao excluir roteiros');
     else { toast.success(`${selectedIds.size} roteiros excluídos!`); setSelectedIds(new Set()); fetchScripts(); }
+  };
+
+  const archiveScript = async (id: string, archive: boolean) => {
+    const { error } = await supabase.from('scripts').update({ is_archived: archive }).eq('id', id);
+    if (error) toast.error('Erro ao arquivar roteiro');
+    else { 
+      toast.success(archive ? 'Roteiro arquivado' : 'Roteiro restaurado'); 
+      fetchScripts(); 
+    }
+  };
+
+  const handleArchiveSelected = async (archive: boolean) => {
+    const { error } = await supabase.from('scripts').update({ is_archived: archive }).in('id', Array.from(selectedIds));
+    if (error) toast.error('Erro ao arquivar roteiros');
+    else { 
+      toast.success(`${selectedIds.size} roteiros ${archive ? 'arquivados' : 'restaurados'}!`); 
+      setSelectedIds(new Set()); 
+      fetchScripts(); 
+    }
   };
 
   const copyScriptContent = (script: Script) => {
@@ -161,6 +189,15 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}><X className="w-4 h-4 mr-1" />Limpar</Button>
                 <Button variant="fire" size="sm" asChild><Link to="/subtitles" state={{ selectedScripts: scripts.filter(s => selectedIds.has(s.id)) }}><FileText className="w-4 h-4 mr-1" />Gerar SRT</Link></Button>
+                {showArchived ? (
+                  <Button variant="secondary" size="sm" onClick={() => handleArchiveSelected(false)}>
+                    <ArchiveRestore className="w-4 h-4 mr-1" />Restaurar
+                  </Button>
+                ) : (
+                  <Button variant="secondary" size="sm" onClick={() => handleArchiveSelected(true)}>
+                    <Archive className="w-4 h-4 mr-1" />Arquivar
+                  </Button>
+                )}
                 <Button variant="destructive" size="sm" onClick={handleDeleteSelected}><Trash2 className="w-4 h-4 mr-1" />Excluir</Button>
               </div>
             </div>
@@ -171,7 +208,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input placeholder="Buscar roteiros..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 bg-muted border-border" />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {/* View Toggle */}
               <div className="flex border border-border rounded-md">
                 <Button
@@ -205,6 +242,16 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                 </SelectContent>
               </Select>
               
+              {/* Archive Toggle */}
+              <Button 
+                variant={showArchived ? "secondary" : "outline"} 
+                size="sm" 
+                onClick={() => setShowArchived(!showArchived)}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                {showArchived ? 'Arquivados' : 'Ativos'}
+              </Button>
+              
               {!statusFilter.has('completed') && (
                 <Button variant="outline" size="sm" onClick={showAllStatuses}>
                   <Eye className="w-4 h-4 mr-2" />Exibir Todos
@@ -230,8 +277,12 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
           ) : filteredScripts.length === 0 ? (
             <div className="text-center py-12 glass rounded-xl">
               <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhum roteiro encontrado</h3>
-              <p className="text-muted-foreground mb-4">{search || statusFilter.size < 3 ? 'Tente ajustar seus filtros' : 'Crie seu primeiro roteiro'}</p>
+              <h3 className="text-lg font-semibold mb-2">
+                {showArchived ? 'Nenhum roteiro arquivado' : 'Nenhum roteiro encontrado'}
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                {search || statusFilter.size < 3 ? 'Tente ajustar seus filtros' : showArchived ? 'Arquive roteiros para vê-los aqui' : 'Crie seu primeiro roteiro'}
+              </p>
             </div>
           ) : (
             <>
@@ -243,7 +294,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               {viewMode === 'card' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredScripts.map((script) => (
-                    <div key={script.id} className={`glass rounded-xl p-4 md:p-6 shadow-card hover:shadow-glow transition-all group ${selectedIds.has(script.id) ? 'ring-2 ring-primary' : ''}`}>
+                    <div key={script.id} className={`glass rounded-xl p-4 md:p-6 shadow-card hover:shadow-glow transition-all group ${selectedIds.has(script.id) ? 'ring-2 ring-primary' : ''} ${script.is_archived ? 'opacity-60' : ''}`}>
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
                           <Checkbox checked={selectedIds.has(script.id)} onCheckedChange={() => toggleSelection(script.id)} />
@@ -257,6 +308,15 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                             <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
                             <DropdownMenuSeparator />
+                            {script.is_archived ? (
+                              <DropdownMenuItem onClick={() => archiveScript(script.id, false)}>
+                                <ArchiveRestore className="w-4 h-4 mr-2" />Restaurar
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => archiveScript(script.id, true)}>
+                                <Archive className="w-4 h-4 mr-2" />Arquivar
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -268,7 +328,14 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                       </Link>
                       <p className="text-sm text-muted-foreground line-clamp-2 mb-4">{script.content || 'Sem conteúdo ainda...'}</p>
                       <div className="flex items-center justify-between">
-                        {getStatusBadge(script.status)}
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(script.status)}
+                          {script.is_archived && (
+                            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground flex items-center gap-1">
+                              <Archive className="w-3 h-3" />Arquivado
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-muted-foreground">
                           {new Date(script.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                         </span>
@@ -290,7 +357,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                     </thead>
                     <tbody className="divide-y divide-border">
                       {filteredScripts.map((script) => (
-                        <tr key={script.id} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(script.id) ? 'bg-primary/5' : ''}`}>
+                        <tr key={script.id} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(script.id) ? 'bg-primary/5' : ''} ${script.is_archived ? 'opacity-60' : ''}`}>
                           <td className="p-3">
                             <Checkbox checked={selectedIds.has(script.id)} onCheckedChange={() => toggleSelection(script.id)} />
                           </td>
@@ -300,7 +367,12 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                             </Link>
                             <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{script.content?.substring(0, 80) || 'Sem conteúdo'}</p>
                           </td>
-                          <td className="p-3 hidden md:table-cell">{getStatusBadge(script.status)}</td>
+                          <td className="p-3 hidden md:table-cell">
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(script.status)}
+                              {script.is_archived && <Archive className="w-3 h-3 text-muted-foreground" />}
+                            </div>
+                          </td>
                           <td className="p-3 hidden lg:table-cell text-xs text-muted-foreground">
                             {new Date(script.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
@@ -313,6 +385,15 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                                 <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
                                 <DropdownMenuSeparator />
+                                {script.is_archived ? (
+                                  <DropdownMenuItem onClick={() => archiveScript(script.id, false)}>
+                                    <ArchiveRestore className="w-4 h-4 mr-2" />Restaurar
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => archiveScript(script.id, true)}>
+                                    <Archive className="w-4 h-4 mr-2" />Arquivar
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem onClick={() => deleteScript(script.id)} className="text-destructive"><Trash2 className="w-4 h-4 mr-2" />Excluir</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
