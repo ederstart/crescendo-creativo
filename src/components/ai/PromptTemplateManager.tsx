@@ -7,11 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Copy, Edit, Trash2, Star, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { PromptTemplateType } from '@/hooks/usePromptTemplates';
 
 interface PromptTemplate {
   id: string;
   name: string;
-  type: 'script' | 'scene';
+  type: PromptTemplateType;
   content: string;
   is_default: boolean;
 }
@@ -23,7 +24,7 @@ interface PromptTemplateManagerProps {
   onCreate: (template: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>) => void;
   onUpdate: (id: string, updates: Partial<PromptTemplate>) => void;
   onDelete: (id: string) => void;
-  onSetDefault: (id: string, type: 'script' | 'scene') => void;
+  onSetDefault: (id: string, type: PromptTemplateType) => void;
 }
 
 export function PromptTemplateManager({
