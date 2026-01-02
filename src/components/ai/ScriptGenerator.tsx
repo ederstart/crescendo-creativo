@@ -349,24 +349,26 @@ export function ScriptGenerator({
         />
       </div>
 
-      <Button
-        onClick={handleGenerate}
-        disabled={loading || !hasApiKey}
-        className="w-full"
-        variant="fire"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Gerando...
-          </>
-        ) : (
-          <>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Gerar Roteiro
-          </>
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleGenerate}
+          disabled={loading || !hasApiKey}
+          className="flex-1"
+          variant="fire"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Gerando...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Gerar Roteiro
+            </>
+          )}
+        </Button>
+      </div>
 
       {!hasApiKey && (
         <p className="text-sm text-destructive text-center">

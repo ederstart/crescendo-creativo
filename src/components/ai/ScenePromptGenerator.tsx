@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Wand2, Copy, Check, Star, FileText, Eye, EyeOff, Sparkles, Images } from 'lucide-react';
+import { Loader2, Wand2, Copy, Check, Star, FileText, Eye, EyeOff, Sparkles, Images, Trash2, StopCircle, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,6 +22,15 @@ interface Script {
   title: string;
   content: string;
   status?: string;
+}
+
+interface SavedScenePrompts {
+  id: string;
+  script_id: string;
+  script_title: string;
+  prompts: ScenePrompt[];
+  style_prompt: string | null;
+  created_at: string;
 }
 
 type AIModel = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
@@ -57,13 +66,29 @@ export function ScenePromptGenerator({
 }: ScenePromptGeneratorProps) {
   const { user } = useAuth();
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
-  const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>('characters');
-  const [numberOfScenes, setNumberOfScenes] = useState(5);
-  const [charactersPerScene, setCharactersPerScene] = useState(130); // Changed default to 130
+  
+  // Persist splitMode
+  const [splitMode, setSplitMode] = useState<'scenes' | 'characters'>(() => {
+    return (localStorage.getItem('scene-split-mode') as 'scenes' | 'characters') || 'characters';
+  });
+  
+  // Persist numberOfScenes
+  const [numberOfScenes, setNumberOfScenes] = useState(() => {
+    return parseInt(localStorage.getItem('scene-number-of-scenes') || '5');
+  });
+  
+  // Persist charactersPerScene
+  const [charactersPerScene, setCharactersPerScene] = useState(() => {
+    return parseInt(localStorage.getItem('scene-chars-per-scene') || '130');
+  });
+  
   const [stylePrompt, setStylePrompt] = useState(defaultStylePrompt);
   const [loading, setLoading] = useState(false);
   const [generatedPrompts, setGeneratedPrompts] = useState<ScenePrompt[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  
+  // Stop button ref
+  const stopGenerationRef = React.useRef(false);
   
   // Batch progress tracking
   const [currentBatch, setCurrentBatch] = useState(0);
@@ -76,6 +101,23 @@ export function ScenePromptGenerator({
   const [loadingScripts, setLoadingScripts] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
 
+  // Saved scene prompts
+  const [savedScenePrompts, setSavedScenePrompts] = useState<SavedScenePrompts[]>([]);
+  const [showSavedPrompts, setShowSavedPrompts] = useState(false);
+
+  // Persist values to localStorage
+  useEffect(() => {
+    localStorage.setItem('scene-split-mode', splitMode);
+  }, [splitMode]);
+
+  useEffect(() => {
+    localStorage.setItem('scene-number-of-scenes', numberOfScenes.toString());
+  }, [numberOfScenes]);
+
+  useEffect(() => {
+    localStorage.setItem('scene-chars-per-scene', charactersPerScene.toString());
+  }, [charactersPerScene]);
+
   // Update model when preferredModel changes
   useEffect(() => {
     if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
@@ -87,6 +129,7 @@ export function ScenePromptGenerator({
   useEffect(() => {
     if (user) {
       fetchScripts();
+      fetchSavedScenePrompts();
     }
   }, [user, showCompleted]);
 
@@ -101,7 +144,6 @@ export function ScenePromptGenerator({
   }, [autoSelectScriptId, scripts, selectedScriptId]);
 
   // Handle automation: auto-start generation when script is selected
-  // This ref is used by an effect defined after handleGenerate
   const autoStartTriggeredRef = React.useRef(false);
 
   const fetchScripts = async () => {
@@ -123,6 +165,64 @@ export function ScenePromptGenerator({
       setScripts(data.filter(s => s.content && s.content.trim()));
     }
     setLoadingScripts(false);
+  };
+
+  const fetchSavedScenePrompts = async () => {
+    const { data, error } = await supabase
+      .from('generated_scene_prompts')
+      .select('*')
+      .eq('user_id', user?.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setSavedScenePrompts(data);
+    }
+  };
+
+  const saveScenePrompts = async (prompts: ScenePrompt[]) => {
+    if (!user || !selectedScriptId) return;
+
+    const script = scripts.find(s => s.id === selectedScriptId);
+    if (!script) return;
+
+    const { error } = await supabase
+      .from('generated_scene_prompts')
+      .insert({
+        user_id: user.id,
+        script_id: selectedScriptId,
+        script_title: script.title,
+        prompts: prompts,
+        style_prompt: stylePrompt || null,
+      });
+
+    if (error) {
+      console.error('Error saving scene prompts:', error);
+    } else {
+      fetchSavedScenePrompts();
+    }
+  };
+
+  const deleteSavedPrompts = async (id: string) => {
+    const { error } = await supabase
+      .from('generated_scene_prompts')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      toast.error('Erro ao excluir');
+    } else {
+      setSavedScenePrompts(prev => prev.filter(p => p.id !== id));
+      toast.success('Cenas excluídas');
+    }
+  };
+
+  const loadSavedPrompts = (saved: SavedScenePrompts) => {
+    setGeneratedPrompts(saved.prompts);
+    if (saved.style_prompt) {
+      setStylePrompt(saved.style_prompt);
+    }
+    onPromptsGenerated(saved.prompts);
+    toast.success(`${saved.prompts.length} cenas carregadas`);
   };
 
   const selectedScript = scripts.find(s => s.id === selectedScriptId);
@@ -189,6 +289,11 @@ export function ScenePromptGenerator({
     return excerpts;
   };
 
+  const handleStop = () => {
+    stopGenerationRef.current = true;
+    toast.info('Parando após o lote atual...');
+  };
+
   const handleGenerate = async () => {
     if (!scriptContent.trim()) {
       toast.error('Selecione um roteiro primeiro');
@@ -199,6 +304,7 @@ export function ScenePromptGenerator({
     setGeneratedPrompts([]);
     setBatchProgress(0);
     setCurrentBatch(0);
+    stopGenerationRef.current = false;
 
     try {
       const targetScenes = splitMode === 'characters' 
@@ -228,6 +334,7 @@ export function ScenePromptGenerator({
 
         setGeneratedPrompts(scenesWithExcerpts);
         onPromptsGenerated(scenesWithExcerpts);
+        await saveScenePrompts(scenesWithExcerpts);
         toast.success(`${scenesWithExcerpts.length} prompts de cenas gerados!`);
       } else {
         const numBatches = Math.ceil(targetScenes / BATCH_SIZE);
@@ -239,6 +346,11 @@ export function ScenePromptGenerator({
         let sceneNumberOffset = 0;
         
         for (let i = 0; i < scriptParts.length; i++) {
+          if (stopGenerationRef.current) {
+            toast.info(`Geração interrompida. ${allScenes.length} cenas geradas.`);
+            break;
+          }
+          
           setCurrentBatch(i + 1);
           setBatchProgress(Math.round((i / scriptParts.length) * 100));
           
@@ -274,7 +386,7 @@ export function ScenePromptGenerator({
           
           setGeneratedPrompts([...allScenes]);
           
-          if (i < scriptParts.length - 1) {
+          if (!stopGenerationRef.current && i < scriptParts.length - 1) {
             toast.info(`Aguardando 5 segundos antes do próximo lote...`);
             await new Promise(resolve => setTimeout(resolve, 5000));
           }
@@ -282,10 +394,14 @@ export function ScenePromptGenerator({
         
         setBatchProgress(100);
         onPromptsGenerated(allScenes);
-        toast.success(`${allScenes.length} prompts de cenas gerados em ${scriptParts.length} lotes!`);
+        await saveScenePrompts(allScenes);
+        
+        if (!stopGenerationRef.current) {
+          toast.success(`${allScenes.length} prompts de cenas gerados em ${scriptParts.length} lotes!`);
+        }
         
         // If automation mode, auto-apply all prompts to images
-        if (autoStart && onApplyAllPrompts) {
+        if (autoStart && onApplyAllPrompts && !stopGenerationRef.current) {
           const allPrompts = allScenes.map(p => `Cena ${p.number}: ${p.prompt}`);
           setTimeout(() => {
             onApplyAllPrompts(allPrompts);
@@ -301,6 +417,7 @@ export function ScenePromptGenerator({
       setLoading(false);
       setCurrentBatch(0);
       setTotalBatches(0);
+      stopGenerationRef.current = false;
     }
   };
 
@@ -345,6 +462,59 @@ export function ScenePromptGenerator({
 
   return (
     <div className="space-y-4">
+      {/* Saved Scene Prompts */}
+      {savedScenePrompts.length > 0 && (
+        <div className="bg-muted/30 rounded-lg p-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-between"
+            onClick={() => setShowSavedPrompts(!showSavedPrompts)}
+          >
+            <span className="flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Cenas Geradas Anteriormente ({savedScenePrompts.length})
+            </span>
+            {showSavedPrompts ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </Button>
+          
+          {showSavedPrompts && (
+            <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+              {savedScenePrompts.map((saved) => (
+                <div key={saved.id} className="flex items-center justify-between p-2 bg-background rounded border">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{saved.script_title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {saved.prompts.length} cenas • {new Date(saved.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => loadSavedPrompts(saved)} title="Carregar">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="fire" 
+                      onClick={() => {
+                        const prompts = saved.prompts.map(p => `Cena ${p.number}: ${p.prompt}`);
+                        onApplyAllPrompts?.(prompts);
+                        toast.success('Prompts enviados para geração de imagens!');
+                      }}
+                      title="Gerar Imagens"
+                    >
+                      <Images className="w-4 h-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => deleteSavedPrompts(saved.id)} className="text-destructive" title="Excluir">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Script Selection */}
       <div>
         <div className="flex items-center justify-between mb-1">
@@ -468,13 +638,14 @@ export function ScenePromptGenerator({
           onValueChange={(v) => setSplitMode(v as 'scenes' | 'characters')}
           className="flex gap-4"
         >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="scenes" id="scenes" />
-            <Label htmlFor="scenes" className="font-normal cursor-pointer">Por número de cenas</Label>
-          </div>
+          {/* Por caracteres vem primeiro visualmente */}
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="characters" id="characters" />
             <Label htmlFor="characters" className="font-normal cursor-pointer">Por caracteres</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="scenes" id="scenes" />
+            <Label htmlFor="scenes" className="font-normal cursor-pointer">Por número de cenas</Label>
           </div>
         </RadioGroup>
       </div>
@@ -545,24 +716,33 @@ export function ScenePromptGenerator({
         </div>
       )}
 
-      <Button
-        onClick={handleGenerate}
-        disabled={loading || !scriptContent}
-        className="w-full"
-        variant="fire"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            {totalBatches > 1 ? `Gerando... (${currentBatch}/${totalBatches})` : 'Gerando Prompts...'}
-          </>
-        ) : (
-          <>
-            <Wand2 className="w-4 h-4 mr-2" />
-            Gerar {splitMode === 'characters' ? `~${estimatedScenes}` : numberOfScenes} Prompts de Cenas
-          </>
+      <div className="flex gap-2">
+        <Button
+          onClick={handleGenerate}
+          disabled={loading || !scriptContent}
+          className="flex-1"
+          variant="fire"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {totalBatches > 1 ? `Gerando... (${currentBatch}/${totalBatches})` : 'Gerando Prompts...'}
+            </>
+          ) : (
+            <>
+              <Wand2 className="w-4 h-4 mr-2" />
+              Gerar {splitMode === 'characters' ? `~${estimatedScenes}` : numberOfScenes} Prompts
+            </>
+          )}
+        </Button>
+        
+        {loading && (
+          <Button variant="destructive" onClick={handleStop}>
+            <StopCircle className="w-4 h-4 mr-2" />
+            Parar
+          </Button>
         )}
-      </Button>
+      </div>
 
       {generatedPrompts.length > 0 && (
         <div className="space-y-3">
