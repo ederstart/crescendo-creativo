@@ -19,7 +19,7 @@ interface PromptTemplate {
 
 interface PromptTemplateManagerProps {
   templates: PromptTemplate[];
-  type: 'script' | 'scene';
+  type: PromptTemplateType;
   onSelect: (template: PromptTemplate) => void;
   onCreate: (template: Omit<PromptTemplate, 'id' | 'created_at' | 'updated_at'>) => void;
   onUpdate: (id: string, updates: Partial<PromptTemplate>) => void;
@@ -80,7 +80,7 @@ export function PromptTemplateManager({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-foreground">
-          Templates de {type === 'script' ? 'Roteiro' : 'Cena'}
+          Templates de {type === 'script' ? 'Roteiro' : type === 'scene' ? 'Cena' : 'Expansão'}
         </h3>
         <Dialog open={isCreating} onOpenChange={setIsCreating}>
           <DialogTrigger asChild>
@@ -91,7 +91,7 @@ export function PromptTemplateManager({
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Criar Template de {type === 'script' ? 'Roteiro' : 'Cena'}</DialogTitle>
+              <DialogTitle>Criar Template de {type === 'script' ? 'Roteiro' : type === 'scene' ? 'Cena' : 'Expansão'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>

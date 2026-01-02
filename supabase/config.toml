@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.kokoro-tts]
 verify_jwt = false
+
+[functions.generate-claude]
+verify_jwt = false
