@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Expand, Copy, Save, Star, FileText, StopCircle, Settings2 } from 'lucide-react';
+import { Loader2, Expand, Copy, Save, Star, FileText, StopCircle, Settings2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -62,7 +62,7 @@ export function ScriptExpander({
   onFavoriteModel,
 }: ScriptExpanderProps) {
   const { user } = useAuth();
-  const { templates, createTemplate, updateTemplate } = usePromptTemplates('expansion');
+  const { templates, createTemplate, updateTemplate, deleteTemplate } = usePromptTemplates('expansion');
   
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
   const [scripts, setScripts] = useState<Script[]>([]);
@@ -407,6 +407,45 @@ export function ScriptExpander({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-3 mt-2">
+              {/* Templates Salvos */}
+              {templates.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Templates Salvos</Label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {templates.map((t) => (
+                      <div 
+                        key={t.id} 
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
+                          customPrompt === t.content 
+                            ? 'bg-primary/20 ring-1 ring-primary' 
+                            : 'bg-muted hover:bg-muted/80'
+                        }`}
+                        onClick={() => {
+                          setCustomPrompt(t.content);
+                          toast.success(`Template "${t.name}" carregado`);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          {t.is_default && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                          <span className="text-sm font-medium">{t.name}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTemplate(t.id);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label>Prompt de Expansão (opcional)</Label>
                 <Textarea
@@ -420,27 +459,6 @@ export function ScriptExpander({
                 </p>
               </div>
               
-              {templates.length > 0 && (
-                <div>
-                  <Label>Templates Salvos</Label>
-                  <Select onValueChange={(id) => {
-                    const t = templates.find(t => t.id === id);
-                    if (t) setCustomPrompt(t.content);
-                  }}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Carregar template..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} {t.is_default && '⭐'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              
               <div className="flex gap-2">
                 <Input
                   placeholder="Nome do template..."
@@ -448,9 +466,21 @@ export function ScriptExpander({
                   onChange={(e) => setPromptTemplateName(e.target.value)}
                 />
                 <Button variant="secondary" size="sm" onClick={savePromptTemplate}>
-                  Salvar Template
+                  <Save className="w-4 h-4 mr-1" />
+                  Salvar
                 </Button>
               </div>
+              
+              {customPrompt && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setCustomPrompt('')}
+                  className="w-full"
+                >
+                  Restaurar Prompt Padrão
+                </Button>
+              )}
             </CollapsibleContent>
           </Collapsible>
 

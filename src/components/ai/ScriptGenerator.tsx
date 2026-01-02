@@ -9,12 +9,13 @@ import { supabase } from '@/lib/supabase';
 import { Switch } from '@/components/ui/switch';
 import type { ScriptIdea } from '@/hooks/useScriptIdeas';
 
-type ModelType = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
+type ModelType = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama' | 'claude';
 
 interface ScriptGeneratorProps {
   groqApiKey?: string;
   geminiApiKey?: string;
   openrouterApiKey?: string;
+  claudeCookie?: string;
   templateContent?: string;
   preferredModel?: string;
   onGenerated: (content: string, model: string) => void;
@@ -30,6 +31,7 @@ export function ScriptGenerator({
   groqApiKey, 
   geminiApiKey,
   openrouterApiKey,
+  claudeCookie,
   templateContent = '',
   preferredModel = 'deepseek',
   onGenerated,
@@ -64,7 +66,7 @@ export function ScriptGenerator({
 
   // Update model when preferredModel changes
   useEffect(() => {
-    if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
+    if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama', 'claude'].includes(preferredModel)) {
       setModel(preferredModel as ModelType);
     }
   }, [preferredModel]);
@@ -114,34 +116,58 @@ export function ScriptGenerator({
 
     // Check API key for models that need it
     const apiKey = getApiKey(model);
-    if (!apiKey) {
+    if (!apiKey && model !== 'claude') {
       const modelNames: Record<ModelType, string> = {
         groq: 'Groq',
         gemini: 'Gemini',
         qwen: 'OpenRouter',
         deepseek: 'OpenRouter',
         llama: 'OpenRouter',
+        claude: 'Claude',
       };
       toast.error(`Configure a API key do ${modelNames[model]} nas configurações`);
+      return;
+    }
+
+    if (model === 'claude' && !claudeCookie) {
+      toast.error('Configure o Cookie do Claude nas configurações');
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-script', {
-        body: {
-          prompt,
-          model,
-          apiKey,
-          attachedContent: attachedContent || undefined,
-        },
-      });
+      let data, error;
+      
+      if (model === 'claude') {
+        // Use Claude edge function
+        const response = await supabase.functions.invoke('generate-claude', {
+          body: {
+            prompt,
+            cookie: claudeCookie,
+            model: 'claude-sonnet-4-20250514',
+          },
+        });
+        data = response.data;
+        error = response.error;
+      } else {
+        // Use regular generate-script function
+        const response = await supabase.functions.invoke('generate-script', {
+          body: {
+            prompt,
+            model,
+            apiKey,
+            attachedContent: attachedContent || undefined,
+          },
+        });
+        data = response.data;
+        error = response.error;
+      }
 
       if (error) throw error;
       if (data.error) throw new Error(data.error);
 
-      onGenerated(data.generatedText, data.model);
+      onGenerated(data.generatedText, data.model || model);
       toast.success('Roteiro gerado com sucesso!');
     } catch (error) {
       console.error('Error generating script:', error);
@@ -154,12 +180,12 @@ export function ScriptGenerator({
   const getApiKey = (m: ModelType): string | undefined => {
     if (m === 'groq') return groqApiKey;
     if (m === 'gemini') return geminiApiKey;
-    // Free OpenRouter models all use openrouterApiKey
     if (['qwen', 'deepseek', 'llama'].includes(m)) return openrouterApiKey;
+    if (m === 'claude') return claudeCookie;
     return undefined;
   };
 
-  const hasApiKey = !!getApiKey(model);
+  const hasApiKey = model === 'claude' ? !!claudeCookie : !!getApiKey(model);
   const isFavorite = model === preferredModel;
 
   // Filter ideas based on showCompletedIdeas
@@ -276,6 +302,14 @@ export function ScriptGenerator({
                 <span>Gemini 2.5 Flash</span>
                 {preferredModel === 'gemini' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
                 {!geminiApiKey && <span className="text-xs text-destructive">Sem API Key</span>}
+              </div>
+            </SelectItem>
+            <SelectItem value="claude">
+              <div className="flex items-center gap-2">
+                <span>Claude 4.5 Sonnet</span>
+                {preferredModel === 'claude' && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                {!claudeCookie && <span className="text-xs text-destructive">Sem Cookie</span>}
+                <span className="text-xs text-purple-500">Premium</span>
               </div>
             </SelectItem>
           </SelectContent>

@@ -286,6 +286,7 @@ export default function AIStudio() {
                 groqApiKey={settings?.groq_api_key}
                 geminiApiKey={settings?.gemini_api_key}
                 openrouterApiKey={settings?.openrouter_api_key}
+                claudeCookie={settings?.claude_cookie}
                 templateContent={selectedScriptPrompt || defaultScriptTemplate?.content || ''}
                 preferredModel={settings?.preferred_model_script || 'groq'}
                 onGenerated={handleScriptGenerated}

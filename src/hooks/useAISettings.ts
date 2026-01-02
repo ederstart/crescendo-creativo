@@ -9,6 +9,7 @@ interface AISettings {
   gemini_api_key?: string;
   openrouter_api_key?: string;
   google_cookie?: string;
+  claude_cookie?: string;
   preferred_model_script?: string;
   preferred_model_scene?: string;
   preferred_model_image?: string;
