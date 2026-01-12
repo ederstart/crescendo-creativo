@@ -17,13 +17,10 @@ export default function Settings() {
   const [showKeys, setShowKeys] = useState(false);
   const [validatingCookie, setValidatingCookie] = useState(false);
   const [cookieValidationResult, setCookieValidationResult] = useState<'success' | 'error' | null>(null);
-  const [claudeCookieValidationResult, setClaudeCookieValidationResult] = useState<'success' | 'error' | null>(null);
-  const [validatingClaudeCookie, setValidatingClaudeCookie] = useState(false);
   const [groqKey, setGroqKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [googleCookie, setGoogleCookie] = useState('');
-  const [claudeCookie, setClaudeCookie] = useState('');
 
   const handlePasswordChange = async () => {
     if (!newPassword || newPassword.length < 6) {
@@ -51,49 +48,7 @@ export default function Settings() {
       gemini_api_key: geminiKey || settings?.gemini_api_key,
       openrouter_api_key: openrouterKey || settings?.openrouter_api_key,
       google_cookie: googleCookie || settings?.google_cookie,
-      claude_cookie: claudeCookie || settings?.claude_cookie,
     });
-  };
-
-  const handleClaudeCookieValidation = async () => {
-    const cookie = claudeCookie || settings?.claude_cookie;
-
-    if (!cookie) {
-      toast.error('Configure o Cookie do Claude primeiro');
-      return;
-    }
-
-    setValidatingClaudeCookie(true);
-    setClaudeCookieValidationResult(null);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-claude', {
-        body: {
-          prompt: 'Responda apenas com a palavra "OK" para confirmar que está funcionando.',
-          cookie,
-          model: 'claude-sonnet-4-20250514',
-        },
-      });
-
-      if (error) throw error;
-      
-      if (data.error) {
-        setClaudeCookieValidationResult('error');
-        toast.error('Validação falhou: ' + data.error);
-        if (data.suggestion) {
-          toast.info(data.suggestion);
-        }
-      } else if (data.generatedText) {
-        setClaudeCookieValidationResult('success');
-        toast.success('Cookie do Claude validado com sucesso!');
-      }
-    } catch (error) {
-      console.error('Claude cookie validation error:', error);
-      setClaudeCookieValidationResult('error');
-      toast.error('Erro ao validar cookie. Verifique se está correto e não expirou.');
-    } finally {
-      setValidatingClaudeCookie(false);
-    }
   };
 
   const handleCookieValidation = async () => {
@@ -304,72 +259,7 @@ export default function Settings() {
                 )}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Gera uma imagem de teste para validar se o cookie está funcionando
-              </p>
-            </div>
-          </div>
-
-          {/* Claude Cookie Section */}
-          <div className="border-t border-border pt-4 mt-4">
-            <h3 className="text-sm font-medium text-foreground mb-3">Claude AI (Anthropic)</h3>
-            <div className="space-y-3">
-              <div>
-                <Label>Claude Cookie</Label>
-                <Textarea
-                  defaultValue={settings?.claude_cookie || ''}
-                  onChange={(e) => setClaudeCookie(e.target.value)}
-                  placeholder="Cole aqui o cookie exportado do Claude.ai..."
-                  className="bg-muted border-border mt-1 font-mono text-xs h-24"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Cole o cookie exportado como "Header String" da extensão Cookie Editor
-                </p>
-              </div>
-              
-              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-2">
-                <p className="font-medium text-foreground">Como obter o cookie do Claude:</p>
-                <ol className="list-decimal list-inside text-muted-foreground space-y-1 text-xs">
-                  <li>Instale a extensão <a href="https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">Cookie Editor <ExternalLink className="w-3 h-3" /></a></li>
-                  <li>Acesse <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">claude.ai <ExternalLink className="w-3 h-3" /></a> e faça login com sua conta</li>
-                  <li>Clique no ícone do Cookie Editor</li>
-                  <li>Clique em "Export" → "Header String"</li>
-                  <li>Cole o conteúdo no campo acima</li>
-                </ol>
-                <p className="text-xs text-amber-500/80 mt-2">
-                  ⚠️ O cookie expira periodicamente. Renove quando parar de funcionar.
-                </p>
-                <p className="text-xs text-blue-500/80">
-                  💡 Claude 4.5 Sonnet gera roteiros de alta qualidade!
-                </p>
-              </div>
-              
-              <Button 
-                variant="outline"
-                onClick={handleClaudeCookieValidation}
-                disabled={validatingClaudeCookie}
-                className="w-full"
-              >
-                {validatingClaudeCookie ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Validando Cookie do Claude...
-                  </>
-                ) : claudeCookieValidationResult === 'success' ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
-                    Cookie Validado com Sucesso
-                  </>
-                ) : claudeCookieValidationResult === 'error' ? (
-                  <>
-                    <XCircle className="w-4 h-4 mr-2 text-destructive" />
-                    Falhou - Clique para tentar novamente
-                  </>
-                ) : (
-                  'Validar Cookie do Claude'
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Envia uma mensagem de teste ao Claude para validar se o cookie está funcionando
+                Gera uma imagem de teste usando IMAGEN_3_5 para validar se o cookie está funcionando
               </p>
             </div>
           </div>
