@@ -11,6 +11,7 @@ import {
   Sparkles,
   Subtitles,
   Volume2,
+  Languages,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const navItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Roteiros', path: '/scripts' },
   { icon: Sparkles, label: 'AI Studio', path: '/ai-studio' },
+  { icon: Languages, label: 'Tradução', path: '/translation' },
   { icon: Volume2, label: 'Voice Generator', path: '/voice-generator' },
   { icon: Subtitles, label: 'Legendas', path: '/subtitles' },
   { icon: Image, label: 'Mood Boards', path: '/mood-boards' },
