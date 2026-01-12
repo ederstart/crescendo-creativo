@@ -46,6 +46,7 @@ export type Database = {
       }
       ai_settings: {
         Row: {
+          claude_cookie: string | null
           created_at: string
           gemini_api_key: string | null
           google_cookie: string | null
@@ -64,6 +65,7 @@ export type Database = {
           whisk_token: string | null
         }
         Insert: {
+          claude_cookie?: string | null
           created_at?: string
           gemini_api_key?: string | null
           google_cookie?: string | null
@@ -82,6 +84,7 @@ export type Database = {
           whisk_token?: string | null
         }
         Update: {
+          claude_cookie?: string | null
           created_at?: string
           gemini_api_key?: string | null
           google_cookie?: string | null

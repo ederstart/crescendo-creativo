@@ -62,7 +62,7 @@ export function ScriptExpander({
   onFavoriteModel,
 }: ScriptExpanderProps) {
   const { user } = useAuth();
-  const { templates, createTemplate, updateTemplate } = usePromptTemplates('expansion');
+  const { templates, loading: templatesLoading, createTemplate, refetch: refetchTemplates } = usePromptTemplates('expansion');
   
   const [model, setModel] = useState<AIModel>(preferredModel as AIModel);
   const [scripts, setScripts] = useState<Script[]>([]);
@@ -81,18 +81,22 @@ export function ScriptExpander({
   
   // Custom prompt
   const [customPrompt, setCustomPrompt] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [promptTemplateName, setPromptTemplateName] = useState('');
   
   const stopRef = useRef(false);
 
-  // Load saved prompt template
+  // Load default template on initial load
   useEffect(() => {
-    const defaultTemplate = templates.find(t => t.is_default);
-    if (defaultTemplate) {
-      setCustomPrompt(defaultTemplate.content);
+    if (!templatesLoading && templates.length > 0 && !selectedTemplateId) {
+      const defaultTemplate = templates.find(t => t.is_default);
+      if (defaultTemplate) {
+        setSelectedTemplateId(defaultTemplate.id);
+        setCustomPrompt(defaultTemplate.content);
+      }
     }
-  }, [templates]);
+  }, [templates, templatesLoading, selectedTemplateId]);
 
   // Persist settings
   useEffect(() => {
@@ -297,12 +301,17 @@ export function ScriptExpander({
       return;
     }
     
-    await createTemplate({
+    const newTemplate = await createTemplate({
       name: promptTemplateName,
       type: 'expansion',
       content: customPrompt || DEFAULT_EXPANSION_PROMPT,
       is_default: templates.length === 0,
     });
+    
+    if (newTemplate) {
+      setSelectedTemplateId(newTemplate.id);
+      await refetchTemplates();
+    }
     
     setPromptTemplateName('');
     toast.success('Template salvo!');
@@ -420,26 +429,30 @@ export function ScriptExpander({
                 </p>
               </div>
               
-              {templates.length > 0 && (
-                <div>
-                  <Label>Templates Salvos</Label>
-                  <Select onValueChange={(id) => {
+              <div>
+                <Label>Templates Salvos {templatesLoading && '(carregando...)'}</Label>
+                <Select 
+                  value={selectedTemplateId} 
+                  onValueChange={(id) => {
                     const t = templates.find(t => t.id === id);
-                    if (t) setCustomPrompt(t.content);
-                  }}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Carregar template..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name} {t.is_default && '⭐'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                    if (t) {
+                      setSelectedTemplateId(id);
+                      setCustomPrompt(t.content);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder={templates.length === 0 ? "Nenhum template salvo" : "Selecione um template..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name} {t.is_default && '⭐'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               
               <div className="flex gap-2">
                 <Input

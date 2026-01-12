@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2, Expand } from 'lucide-react';
+import { FileText, Wand2, Image, Settings, Copy, Save, Layers, Trash2, Expand, FileAudio, Undo2 } from 'lucide-react';
 import { useAISettings } from '@/hooks/useAISettings';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { useGeneratedImages } from '@/hooks/useGeneratedImages';
@@ -15,6 +15,7 @@ import { ScenePromptGenerator } from '@/components/ai/ScenePromptGenerator';
 import { ImageGallery } from '@/components/ai/ImageGallery';
 import { MultiStepScriptWizard } from '@/components/ai/MultiStepScriptWizard';
 import { ScriptExpander } from '@/components/ai/ScriptExpander';
+import { TranscriptionToScript } from '@/components/ai/TranscriptionToScript';
 import { toast } from 'sonner';
 import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +23,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 const SCRIPT_STORAGE_KEY = 'ai_studio_generated_script';
 const SCRIPT_TITLE_STORAGE_KEY = 'ai_studio_script_title';
+const SCENE_PROMPTS_STORAGE_KEY = 'ai_studio_scene_prompts';
 
 export default function AIStudio() {
   const navigate = useNavigate();
@@ -47,7 +49,12 @@ export default function AIStudio() {
   const [savingScript, setSavingScript] = useState(false);
   const [activeTab, setActiveTab] = useState('script');
   const [imagePromptFromScene, setImagePromptFromScene] = useState('');
-  const [batchPromptsForImages, setBatchPromptsForImages] = useState('');
+  
+  // Batch prompts with persistence and undo
+  const [batchPromptsForImages, setBatchPromptsForImages] = useState(() => {
+    return localStorage.getItem(SCENE_PROMPTS_STORAGE_KEY) || '';
+  });
+  const [previousBatchPrompts, setPreviousBatchPrompts] = useState<string | null>(null);
   
   // Automation state
   const [automationScriptId, setAutomationScriptId] = useState<string | null>(null);
@@ -96,6 +103,11 @@ export default function AIStudio() {
     }
   }, [scriptTitle]);
 
+  // Persist batch prompts
+  useEffect(() => {
+    localStorage.setItem(SCENE_PROMPTS_STORAGE_KEY, batchPromptsForImages);
+  }, [batchPromptsForImages]);
+
   const handleScriptGenerated = (content: string) => {
     setGeneratedScript(content);
   };
@@ -131,15 +143,30 @@ export default function AIStudio() {
   };
 
   const handleApplyAllPromptsToImages = (prompts: string[]) => {
-    setBatchPromptsForImages(prompts.join('\n'));
+    const newPrompts = prompts.join('\n');
+    setPreviousBatchPrompts(batchPromptsForImages);
+    setBatchPromptsForImages(newPrompts);
     setActiveTab('images');
     toast.success(`${prompts.length} prompts prontos! Clique em "Gerar Todas" para criar as imagens.`);
+  };
+
+  const clearBatchPrompts = () => {
+    setPreviousBatchPrompts(batchPromptsForImages);
+    setBatchPromptsForImages('');
+    toast.success('Prompts limpos. Clique em Desfazer para recuperar.');
+  };
+
+  const undoBatchPrompts = () => {
+    if (previousBatchPrompts !== null) {
+      setBatchPromptsForImages(previousBatchPrompts);
+      setPreviousBatchPrompts(null);
+      toast.success('Prompts restaurados!');
+    }
   };
 
   const handleIdeaSelect = async (idea: { id: string; title: string }) => {
     setSelectedIdeaId(idea.id);
     setScriptTitle(idea.title);
-    // Update idea status to in_progress
     await updateIdeaStatus(idea.id, 'in_progress');
   };
 
@@ -228,7 +255,7 @@ export default function AIStudio() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full max-w-3xl grid-cols-5">
+        <TabsList className="grid w-full max-w-4xl grid-cols-6">
           <TabsTrigger 
             value="script" 
             className={`flex items-center gap-2 transition-all ${activeTab === 'script' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
@@ -249,6 +276,13 @@ export default function AIStudio() {
           >
             <Expand className="w-4 h-4" />
             Expansão
+          </TabsTrigger>
+          <TabsTrigger 
+            value="transcription" 
+            className={`flex items-center gap-2 transition-all ${activeTab === 'transcription' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/25 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-500 data-[state=active]:text-white' : ''}`}
+          >
+            <FileAudio className="w-4 h-4" />
+            Transcrição
           </TabsTrigger>
           <TabsTrigger 
             value="scene" 
@@ -393,6 +427,28 @@ export default function AIStudio() {
           </div>
         </TabsContent>
 
+        <TabsContent value="transcription" className="space-y-6">
+          <div className="glass rounded-xl p-6 max-w-3xl mx-auto">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Transcrição → Roteiro</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Cole uma transcrição de vídeo/áudio e transforme em um roteiro profissional.
+            </p>
+            <TranscriptionToScript
+              groqApiKey={settings?.groq_api_key}
+              geminiApiKey={settings?.gemini_api_key}
+              openrouterApiKey={settings?.openrouter_api_key}
+              preferredModel={settings?.preferred_model_script || 'groq'}
+              onComplete={(script, title) => {
+                setGeneratedScript(script);
+                setScriptTitle(title);
+                setActiveTab('script');
+                toast.success('Roteiro criado! Salve na aba "Roteiro".');
+              }}
+              onFavoriteModel={(model) => handleFavoriteModel('script', model)}
+            />
+          </div>
+        </TabsContent>
+
         <TabsContent value="scene" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="glass rounded-xl p-6">
@@ -435,7 +491,23 @@ export default function AIStudio() {
 
         <TabsContent value="images">
           <div className="glass rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Galeria de Imagens</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Galeria de Imagens</h3>
+              {batchPromptsForImages && (
+                <div className="flex gap-2">
+                  {previousBatchPrompts !== null && (
+                    <Button variant="ghost" size="sm" onClick={undoBatchPrompts}>
+                      <Undo2 className="w-4 h-4 mr-2" />
+                      Desfazer
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={clearBatchPrompts} className="text-destructive">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Limpar Prompts
+                  </Button>
+                </div>
+              )}
+            </div>
             <ImageGallery
               googleCookie={settings?.google_cookie}
               styleTemplate={settings?.style_template}
