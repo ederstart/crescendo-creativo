@@ -8,12 +8,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { 
   Languages, 
   Upload, 
   FileText, 
   Trash2, 
-  Save,
   Eye,
   EyeOff,
   Copy,
@@ -224,38 +224,6 @@ export default function Translation() {
     });
   };
 
-  // Save translation
-  const saveTranslation = async () => {
-    if (!selectedScript || pairs.length === 0) return;
-
-    try {
-      // Save as a note in the script or create a new translated version
-      const translatedContent = pairs.map(p => p.translated).join('\n\n');
-      
-      const { error } = await supabase
-        .from('scripts')
-        .insert({
-          user_id: user!.id,
-          title: `${selectedScript.title} - Traduzido`,
-          content: translatedContent,
-          status: 'draft'
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: "Salvo!",
-        description: "Tradução salva como novo roteiro"
-      });
-    } catch (error: any) {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  };
-
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-3 mb-6">
@@ -375,13 +343,42 @@ export default function Translation() {
               Comparação Linha a Linha ({pairs.length} pares)
             </CardTitle>
             <div className="flex gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Eye className="w-4 h-4 mr-2" />
+                    Visualizar Completo
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[85vh]">
+                  <DialogHeader>
+                    <DialogTitle>{selectedScript?.title} - Tradução</DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="h-[60vh] mt-4">
+                    <div className="space-y-4 p-4">
+                      {pairs.map((pair, index) => (
+                        <div key={index} className="space-y-2 pb-4 border-b border-border last:border-0">
+                          <p className="text-sm text-blue-500 font-medium">
+                            {pair.original}
+                          </p>
+                          <p className="text-sm text-green-500">
+                            {pair.translated}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                  <div className="flex gap-2 mt-4">
+                    <Button variant="secondary" onClick={copyFormattedText} className="flex-1">
+                      {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                      Copiar
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Button variant="outline" size="sm" onClick={copyFormattedText}>
                 {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                 {copied ? 'Copiado!' : 'Copiar Tudo'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={saveTranslation}>
-                <Save className="w-4 h-4 mr-2" />
-                Salvar Tradução
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setShowComparison(false)}>
                 <EyeOff className="w-4 h-4 mr-2" />
