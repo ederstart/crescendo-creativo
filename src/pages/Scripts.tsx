@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown, Volume2, Archive, ArchiveRestore } from 'lucide-react';
+import { FileText, Plus, Search, Filter, MoreVertical, Trash2, Edit, X, Copy, Eye, Zap, LayoutGrid, List, ArrowUpDown, Volume2, Archive, ArchiveRestore, Languages } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,7 +16,7 @@ interface Script {
   id: string;
   title: string;
   content: string;
-  status: 'draft' | 'in_progress' | 'completed';
+  status: 'draft' | 'in_progress' | 'completed' | 'traduzir';
   is_archived: boolean;
   created_at: string;
   updated_at: string;
@@ -38,7 +38,7 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Hide completed by default
-  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(['draft', 'in_progress']));
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set(['draft', 'in_progress', 'traduzir']));
   const [showFilters, setShowFilters] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   
@@ -150,7 +150,17 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
   };
 
   const showAllStatuses = () => {
-    setStatusFilter(new Set(['draft', 'in_progress', 'completed']));
+    setStatusFilter(new Set(['draft', 'in_progress', 'completed', 'traduzir']));
+  };
+
+  const toggleTraduzirStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'traduzir' ? 'draft' : 'traduzir';
+    const { error } = await supabase.from('scripts').update({ status: newStatus }).eq('id', id);
+    if (error) toast.error('Erro ao atualizar status');
+    else { 
+      toast.success(newStatus === 'traduzir' ? 'Tag "Traduzir" adicionada' : 'Tag "Traduzir" removida'); 
+      fetchScripts(); 
+    }
   };
 
   const filteredScripts = scripts.filter((script) => {
@@ -159,9 +169,19 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
   });
 
   const getStatusBadge = (status: string) => {
-    const styles = { completed: 'bg-green-500/20 text-green-500', in_progress: 'bg-secondary/20 text-secondary', draft: 'bg-muted text-muted-foreground' };
-    const labels = { completed: 'Concluído', in_progress: 'Em progresso', draft: 'Rascunho' };
-    return <span className={`text-xs px-2 py-1 rounded-full ${styles[status as keyof typeof styles]}`}>{labels[status as keyof typeof labels]}</span>;
+    const styles: Record<string, string> = { 
+      completed: 'bg-green-500/20 text-green-500', 
+      in_progress: 'bg-secondary/20 text-secondary', 
+      draft: 'bg-muted text-muted-foreground',
+      traduzir: 'bg-blue-500/20 text-blue-500'
+    };
+    const labels: Record<string, string> = { 
+      completed: 'Concluído', 
+      in_progress: 'Em progresso', 
+      draft: 'Rascunho',
+      traduzir: 'Traduzir'
+    };
+    return <span className={`text-xs px-2 py-1 rounded-full ${styles[status] || styles.draft}`}>{labels[status] || status}</span>;
   };
 
   return (
@@ -260,9 +280,9 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
               <DropdownMenu open={showFilters} onOpenChange={setShowFilters}>
                 <DropdownMenuTrigger asChild><Button variant="outline"><Filter className="w-4 h-4 mr-2" />Filtros</Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  {['draft', 'in_progress', 'completed'].map(status => (
+                  {['draft', 'in_progress', 'completed', 'traduzir'].map(status => (
                     <DropdownMenuCheckboxItem key={status} checked={statusFilter.has(status)} onCheckedChange={() => setStatusFilter(prev => { const next = new Set(prev); next.has(status) ? next.delete(status) : next.add(status); return next; })}>
-                      {status === 'draft' ? 'Rascunho' : status === 'in_progress' ? 'Em progresso' : 'Concluído'}
+                      {status === 'draft' ? 'Rascunho' : status === 'in_progress' ? 'Em progresso' : status === 'completed' ? 'Concluído' : 'Traduzir'}
                     </DropdownMenuCheckboxItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -307,6 +327,10 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                             <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => toggleTraduzirStatus(script.id, script.status)}>
+                              <Languages className="w-4 h-4 mr-2" />
+                              {script.status === 'traduzir' ? 'Remover Traduzir' : 'Marcar Traduzir'}
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {script.is_archived ? (
                               <DropdownMenuItem onClick={() => archiveScript(script.id, false)}>
@@ -384,6 +408,10 @@ export default function Scripts({ selectionMode = false, onSelectionChange }: Sc
                                 <DropdownMenuItem asChild><Link to={`/scripts/${script.id}`}><Edit className="w-4 h-4 mr-2" />Editar</Link></DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleAutomation(script)}><Zap className="w-4 h-4 mr-2" />Automatizar</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGenerateAudio(script)}><Volume2 className="w-4 h-4 mr-2" />Gerar Áudio</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => toggleTraduzirStatus(script.id, script.status)}>
+                                  <Languages className="w-4 h-4 mr-2" />
+                                  {script.status === 'traduzir' ? 'Remover Traduzir' : 'Marcar Traduzir'}
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 {script.is_archived ? (
                                   <DropdownMenuItem onClick={() => archiveScript(script.id, false)}>

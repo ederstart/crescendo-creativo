@@ -95,16 +95,19 @@ export function TranscriptionToScript({
     localStorage.setItem(STORAGE_KEY_TITLE, title);
   }, [title]);
 
-  // Load default template
+  // Load default template on mount
   useEffect(() => {
-    if (!templatesLoading && templates.length > 0 && !selectedTemplateId) {
-      const defaultTemplate = templates.find(t => t.is_default);
-      if (defaultTemplate) {
-        setSelectedTemplateId(defaultTemplate.id);
-        setCustomPrompt(defaultTemplate.content);
+    if (!templatesLoading && templates.length > 0) {
+      // If no template selected yet, select the default one
+      if (!selectedTemplateId) {
+        const defaultTemplate = templates.find(t => t.is_default);
+        if (defaultTemplate) {
+          setSelectedTemplateId(defaultTemplate.id);
+          setCustomPrompt(defaultTemplate.content);
+        }
       }
     }
-  }, [templates, templatesLoading, selectedTemplateId]);
+  }, [templates, templatesLoading]);
 
   useEffect(() => {
     if (preferredModel && ['groq', 'gemini', 'qwen', 'deepseek', 'llama'].includes(preferredModel)) {
@@ -301,9 +304,45 @@ export function TranscriptionToScript({
     }
   };
 
-  const saveAsScript = () => {
-    if (!result.trim()) return;
-    onComplete?.(result, title || 'Roteiro de Transcrição');
+  const saveAsScript = async () => {
+    if (!result.trim()) {
+      toast.error('Gere um roteiro primeiro');
+      return;
+    }
+    if (!user) {
+      toast.error('Você precisa estar logado');
+      return;
+    }
+    
+    const scriptTitle = title.trim() || 'Roteiro de Transcrição';
+    
+    try {
+      const { data, error } = await supabase
+        .from('scripts')
+        .insert({
+          user_id: user.id,
+          title: scriptTitle,
+          content: result,
+          status: 'draft',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Clear local storage after successful save
+      localStorage.removeItem(STORAGE_KEY_RESULT);
+      localStorage.removeItem(STORAGE_KEY_TITLE);
+      setResult('');
+      setTitle('');
+      
+      toast.success('Roteiro salvo com sucesso!');
+      
+      // Also call onComplete if provided
+      onComplete?.(result, scriptTitle);
+    } catch (error: any) {
+      toast.error('Erro ao salvar: ' + error.message);
+    }
   };
 
   const hasApiKey = !!getApiKey(model);
@@ -401,28 +440,35 @@ export function TranscriptionToScript({
           </div>
           
           <div>
-            <Label>Templates Salvos {templatesLoading && '(carregando...)'}</Label>
-            <Select 
-              value={selectedTemplateId} 
-              onValueChange={(id) => {
-                const t = templates.find(t => t.id === id);
-                if (t) {
-                  setSelectedTemplateId(id);
-                  setCustomPrompt(t.content);
-                }
-              }}
-            >
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder={templates.length === 0 ? "Nenhum template salvo" : "Selecione um template..."} />
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name} {t.is_default && '⭐'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Templates Salvos</Label>
+            {templatesLoading ? (
+              <p className="text-xs text-muted-foreground mt-1">Carregando templates...</p>
+            ) : templates.length === 0 ? (
+              <p className="text-xs text-muted-foreground mt-1">Nenhum template salvo ainda</p>
+            ) : (
+              <Select 
+                value={selectedTemplateId} 
+                onValueChange={(id) => {
+                  const t = templates.find(t => t.id === id);
+                  if (t) {
+                    setSelectedTemplateId(id);
+                    setCustomPrompt(t.content);
+                    toast.success(`Template "${t.name}" carregado`);
+                  }
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione um template..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name} {t.is_default && '⭐'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           
           <div className="flex gap-2">
@@ -492,22 +538,49 @@ export function TranscriptionToScript({
         )}
       </div>
 
-      {/* Result */}
+      {/* Result - Similar to AI Studio script output */}
       {result && (
-        <div className="space-y-3 border-t pt-4">
-          <div className="flex items-center justify-between">
-            <Label>Resultado</Label>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={copyResult}>
-                <Copy className="w-4 h-4" />
-              </Button>
-              {previousResult && (
-                <Button variant="ghost" size="sm" onClick={undoResult}>
-                  <Undo2 className="w-4 h-4" />
+        <div className="space-y-4 border-t pt-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-lg font-semibold">Roteiro Gerado</Label>
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={copyResult}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copiar
                 </Button>
-              )}
-              <Button variant="ghost" size="sm" onClick={clearResult} className="text-destructive">
-                <Trash2 className="w-4 h-4" />
+                {previousResult && (
+                  <Button variant="ghost" size="sm" onClick={undoResult}>
+                    <Undo2 className="w-4 h-4 mr-2" />
+                    Desfazer
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={clearResult} className="text-destructive hover:text-destructive">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Limpar
+                </Button>
+              </div>
+            </div>
+            
+            {/* Editable title for the result */}
+            <div className="flex items-end gap-4">
+              <div className="flex-1">
+                <Label htmlFor="result-title">Título do Roteiro</Label>
+                <Input
+                  id="result-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Digite o título do seu roteiro..."
+                  className="mt-1"
+                />
+              </div>
+              <Button 
+                variant="fire" 
+                onClick={saveAsScript}
+                disabled={!title.trim()}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Salvar Roteiro
               </Button>
             </div>
           </div>
@@ -515,23 +588,18 @@ export function TranscriptionToScript({
           <Textarea
             value={result}
             onChange={(e) => setResult(e.target.value)}
-            className="min-h-[200px]"
+            rows={15}
+            className="font-mono text-sm"
           />
           
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {result.length.toLocaleString()} caracteres
+              {result.length.toLocaleString('pt-BR')} caracteres
             </span>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={generateScript} disabled={isGenerating}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Gerar Novamente
-              </Button>
-              <Button variant="fire" size="sm" onClick={saveAsScript}>
-                <Save className="w-4 h-4 mr-2" />
-                Salvar como Roteiro
-              </Button>
-            </div>
+            <Button variant="secondary" size="sm" onClick={generateScript} disabled={isGenerating}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Gerar Novamente
+            </Button>
           </div>
         </div>
       )}
