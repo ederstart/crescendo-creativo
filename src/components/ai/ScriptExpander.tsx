@@ -89,14 +89,17 @@ export function ScriptExpander({
 
   // Load default template on initial load
   useEffect(() => {
-    if (!templatesLoading && templates.length > 0 && !selectedTemplateId) {
-      const defaultTemplate = templates.find(t => t.is_default);
-      if (defaultTemplate) {
-        setSelectedTemplateId(defaultTemplate.id);
-        setCustomPrompt(defaultTemplate.content);
+    if (!templatesLoading && templates.length > 0) {
+      // If no template selected yet, select the default one
+      if (!selectedTemplateId) {
+        const defaultTemplate = templates.find(t => t.is_default);
+        if (defaultTemplate) {
+          setSelectedTemplateId(defaultTemplate.id);
+          setCustomPrompt(defaultTemplate.content);
+        }
       }
     }
-  }, [templates, templatesLoading, selectedTemplateId]);
+  }, [templates, templatesLoading]);
 
   // Persist settings
   useEffect(() => {
@@ -123,7 +126,7 @@ export function ScriptExpander({
       .from('scripts')
       .select('id, title, content, status')
       .eq('user_id', user?.id)
-      .neq('status', 'done') // Exclude completed scripts
+      .in('status', ['draft', 'in_progress']) // Only show draft and in_progress scripts
       .order('updated_at', { ascending: false });
 
     if (!error && data) {
@@ -430,28 +433,35 @@ export function ScriptExpander({
               </div>
               
               <div>
-                <Label>Templates Salvos {templatesLoading && '(carregando...)'}</Label>
-                <Select 
-                  value={selectedTemplateId} 
-                  onValueChange={(id) => {
-                    const t = templates.find(t => t.id === id);
-                    if (t) {
-                      setSelectedTemplateId(id);
-                      setCustomPrompt(t.content);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={templates.length === 0 ? "Nenhum template salvo" : "Selecione um template..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} {t.is_default && '⭐'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Templates Salvos</Label>
+                {templatesLoading ? (
+                  <p className="text-xs text-muted-foreground mt-1">Carregando templates...</p>
+                ) : templates.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mt-1">Nenhum template salvo ainda</p>
+                ) : (
+                  <Select 
+                    value={selectedTemplateId} 
+                    onValueChange={(id) => {
+                      const t = templates.find(t => t.id === id);
+                      if (t) {
+                        setSelectedTemplateId(id);
+                        setCustomPrompt(t.content);
+                        toast.success(`Template "${t.name}" carregado`);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Selecione um template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} {t.is_default && '⭐'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               
               <div className="flex gap-2">
