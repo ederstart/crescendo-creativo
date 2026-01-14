@@ -13,7 +13,8 @@ import {
   Volume2,
   Languages,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useSidebarState } from '@/hooks/useSidebarState';
@@ -24,6 +25,7 @@ const navItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
   { icon: FileText, label: 'Roteiros', path: '/scripts' },
   { icon: Sparkles, label: 'AI Studio', path: '/ai-studio' },
+  { icon: MessageSquare, label: 'Diálogo', path: '/dialogue' },
   { icon: Languages, label: 'Tradução', path: '/translation' },
   { icon: Volume2, label: 'Voice Generator', path: '/voice-generator' },
   { icon: Subtitles, label: 'Legendas', path: '/subtitles' },

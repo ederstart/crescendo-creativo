@@ -17,6 +17,7 @@ import AIStudio from "./pages/AIStudio";
 import Translation from "./pages/Translation";
 import Subtitles from "./pages/Subtitles";
 import VoiceGenerator from "./pages/VoiceGenerator";
+import Dialogue from "./pages/Dialogue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/translation" element={<Translation />} />
             <Route path="/voice-generator" element={<VoiceGenerator />} />
             <Route path="/subtitles" element={<Subtitles />} />
+            <Route path="/dialogue" element={<Dialogue />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
