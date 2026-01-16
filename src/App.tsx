@@ -14,6 +14,7 @@ import MoodBoardEditor from "./pages/MoodBoardEditor";
 import Thumbnails from "./pages/Thumbnails";
 import Settings from "./pages/Settings";
 import AIStudio from "./pages/AIStudio";
+import AILabs from "./pages/AILabs";
 import Translation from "./pages/Translation";
 import Subtitles from "./pages/Subtitles";
 import VoiceGenerator from "./pages/VoiceGenerator";
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/thumbnails" element={<Thumbnails />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/ai-studio" element={<AIStudio />} />
+            <Route path="/ai-labs" element={<AILabs />} />
             <Route path="/translation" element={<Translation />} />
             <Route path="/voice-generator" element={<VoiceGenerator />} />
             <Route path="/subtitles" element={<Subtitles />} />

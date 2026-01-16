@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
-export type PromptTemplateType = 'script' | 'scene' | 'expansion' | 'transcription' | 'dialogue';
+export type PromptTemplateType = 'script' | 'scene' | 'expansion' | 'transcription' | 'dialogue' | 'labs';
 
 interface PromptTemplate {
   id: string;
