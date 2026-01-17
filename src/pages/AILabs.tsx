@@ -83,8 +83,8 @@ const SCENES_PER_BATCH = 15;
 export default function AILabs() {
   const { user } = useAuth();
   const { settings } = useAISettings();
-  const { templates: promptTemplates, createTemplate: createPromptTemplate, deleteTemplate, setDefaultTemplate } = usePromptTemplates('labs');
-  const { templates: styleTemplates, createTemplate: createStyleTemplate, setFavorite, favoriteTemplate } = useStyleTemplates();
+  const { templates: promptTemplates, createTemplate: createPromptTemplate, deleteTemplate: deletePromptTemplate, setDefaultTemplate, refetch: refetchPromptTemplates } = usePromptTemplates('labs');
+  const { templates: styleTemplates, createTemplate: createStyleTemplate, setFavorite, favoriteTemplate, deleteTemplate: deleteStyleTemplate, refetch: refetchStyleTemplates } = useStyleTemplates();
   const { images, loading: loadingImages, saveImage, deleteImage, deleteMultiple, refetch } = useGeneratedImages();
   
   // Find default template
@@ -107,6 +107,8 @@ export default function AILabs() {
   
   // Template management
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [showManageTemplatesDialog, setShowManageTemplatesDialog] = useState(false);
+  const [showManageStylesDialog, setShowManageStylesDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   
@@ -531,6 +533,19 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
     });
     setNewTemplateName('');
     setShowSaveTemplateDialog(false);
+    refetchPromptTemplates();
+  };
+
+  const handleDeletePromptTemplate = async (id: string, name: string) => {
+    if (!confirm(`Excluir template "${name}"?`)) return;
+    await deletePromptTemplate(id);
+    refetchPromptTemplates();
+  };
+
+  const handleDeleteStyleTemplate = async (id: string, name: string) => {
+    if (!confirm(`Excluir estilo "${name}"?`)) return;
+    await deleteStyleTemplate(id);
+    refetchStyleTemplates();
   };
 
   const toggleImageSelection = (id: string) => {
@@ -681,6 +696,65 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
                         </SelectContent>
                       </Select>
                     )}
+                    <Dialog open={showManageTemplatesDialog} onOpenChange={setShowManageTemplatesDialog}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-8 w-8" title="Gerenciar templates">
+                          <Settings className="w-4 h-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                          <DialogTitle>Gerenciar Templates</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                          {promptTemplates.length === 0 ? (
+                            <p className="text-muted-foreground text-sm text-center py-4">Nenhum template salvo</p>
+                          ) : (
+                            promptTemplates.map(t => (
+                              <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  {t.is_default && <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />}
+                                  <span className="font-medium">{t.name}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => {
+                                      setConsistencyTemplate(t.content);
+                                      toast.success(`Template "${t.name}" carregado`);
+                                      setShowManageTemplatesDialog(false);
+                                    }}
+                                    title="Carregar"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => setDefaultTemplate(t.id, 'labs')}
+                                    title="Definir como padrão"
+                                  >
+                                    <Star className={cn("w-4 h-4", t.is_default && "fill-yellow-500 text-yellow-500")} />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                    onClick={() => handleDeletePromptTemplate(t.id, t.name)}
+                                    title="Excluir"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                     <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
                       <DialogTrigger asChild>
                         <Button variant="outline" size="icon" className="h-8 w-8" title="Salvar template">
@@ -741,29 +815,99 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
                   <Sparkles className="w-5 h-5" />
                   Template de Estilo Visual (Opcional)
                 </span>
-                {styleTemplates.length > 0 && (
-                  <Select onValueChange={(id) => {
-                    const t = styleTemplates.find(t => t.id === id);
-                    if (t) {
-                      setStyleTemplate(t.content);
-                      toast.success(`Estilo "${t.name}" aplicado`);
-                    }
-                  }}>
-                    <SelectTrigger className="h-8 w-40 text-xs">
-                      <SelectValue placeholder="Carregar estilo..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {styleTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          <div className="flex items-center gap-1">
-                            {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                            <span>{t.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <div className="flex gap-1">
+                  {styleTemplates.length > 0 && (
+                    <Select onValueChange={(id) => {
+                      const t = styleTemplates.find(t => t.id === id);
+                      if (t) {
+                        setStyleTemplate(t.content);
+                        toast.success(`Estilo "${t.name}" aplicado`);
+                      }
+                    }}>
+                      <SelectTrigger className="h-8 w-40 text-xs">
+                        <SelectValue placeholder="Carregar estilo..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {styleTemplates.map(t => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <div className="flex items-center gap-1">
+                              {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
+                              <span>{t.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Dialog open={showManageStylesDialog} onOpenChange={setShowManageStylesDialog}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-8 w-8" title="Gerenciar estilos">
+                        <Settings className="w-4 h-4" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Gerenciar Estilos Visuais</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                        {styleTemplates.length === 0 ? (
+                          <p className="text-muted-foreground text-sm text-center py-4">Nenhum estilo salvo</p>
+                        ) : (
+                          styleTemplates.map(t => (
+                            <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center gap-2">
+                                {t.is_favorite && <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />}
+                                <span className="font-medium">{t.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    setStyleTemplate(t.content);
+                                    toast.success(`Estilo "${t.name}" aplicado`);
+                                    setShowManageStylesDialog(false);
+                                  }}
+                                  title="Aplicar"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => setFavorite(t.id)}
+                                  title="Favoritar"
+                                >
+                                  <Star className={cn("w-4 h-4", t.is_favorite && "fill-yellow-500 text-yellow-500")} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteStyleTemplate(t.id, t.name)}
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setStyleTemplate('')}
+                    title="Limpar"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>

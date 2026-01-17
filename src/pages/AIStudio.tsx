@@ -128,12 +128,24 @@ export default function AIStudio() {
   };
 
   const handleTemplateSelect = (template: { content: string }) => {
-    setSelectedScriptPrompt(template.content);
-    toast.success('Template carregado! Complete seu pedido abaixo.');
+    // Toggle: if same content is already selected, deselect it
+    if (selectedScriptPrompt === template.content) {
+      setSelectedScriptPrompt('');
+      toast.info('Template desmarcado');
+    } else {
+      setSelectedScriptPrompt(template.content);
+      toast.success('Template carregado! Complete seu pedido abaixo.');
+    }
   };
 
   const handleSceneTemplateSelect = (template: { content: string }) => {
-    setSelectedScenePrompt(template.content);
+    // Toggle: if same content is already selected, deselect it
+    if (selectedScenePrompt === template.content) {
+      setSelectedScenePrompt('');
+      toast.info('Template desmarcado');
+    } else {
+      setSelectedScenePrompt(template.content);
+    }
   };
 
   const handleApplyPromptToImage = (prompt: string) => {
