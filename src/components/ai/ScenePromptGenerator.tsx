@@ -387,8 +387,10 @@ export function ScenePromptGenerator({
           setGeneratedPrompts([...allScenes]);
           
           if (!stopGenerationRef.current && i < scriptParts.length - 1) {
-            toast.info(`Aguardando 5 segundos antes do próximo lote...`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Longer delay for OpenRouter models to avoid rate limits
+            const delaySeconds = ['qwen', 'deepseek', 'llama'].includes(model) ? 15 : 5;
+            toast.info(`Aguardando ${delaySeconds} segundos antes do próximo lote...`);
+            await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
           }
         }
         

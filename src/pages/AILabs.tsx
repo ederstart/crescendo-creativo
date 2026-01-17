@@ -243,8 +243,10 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
         setGeneratedScenes([...allScenes]);
         
         if (!stopGenerationRef.current && i < numBatches - 1) {
-          toast.info(`Lote ${i + 1}/${numBatches} concluído. Aguardando 8s...`);
-          await new Promise(resolve => setTimeout(resolve, 8000));
+          // Longer delay to avoid rate limits with free tier APIs
+          const delaySeconds = model === 'groq' || model === 'gemini' ? 5 : 15;
+          toast.info(`Lote ${i + 1}/${numBatches} concluído. Aguardando ${delaySeconds}s para evitar rate limit...`);
+          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
         }
       }
       

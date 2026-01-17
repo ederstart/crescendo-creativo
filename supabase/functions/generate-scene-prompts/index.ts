@@ -189,7 +189,7 @@ Response format (VALID JSON ONLY):
       const data = await response.json();
       generatedText = data.candidates[0].content.parts[0].text;
 
-    } else if (['qwen', 'deepseek', 'llama'].includes(model)) {
+  } else if (['qwen', 'deepseek', 'llama'].includes(model)) {
       // OpenRouter models mapping
       const openRouterModels: Record<string, string> = {
         qwen: 'qwen/qwen3-coder:free',
@@ -199,50 +199,73 @@ Response format (VALID JSON ONLY):
 
       const openRouterModel = openRouterModels[model];
 
-      // Retry logic for rate limiting
-      const MAX_RETRIES = 3;
-      const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s
+      // Enhanced retry logic for rate limiting
+      const MAX_RETRIES = 5;
+      const RETRY_DELAYS = [10000, 20000, 40000, 60000, 90000]; // 10s, 20s, 40s, 60s, 90s
       let lastError = '';
       
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: openRouterModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
-            ],
-            max_tokens: 8192,
-          }),
-        });
+        try {
+          console.log(`OpenRouter attempt ${attempt + 1}/${MAX_RETRIES + 1} for model ${openRouterModel}`);
+          
+          response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://lovable.dev',
+              'X-Title': 'Lovable Scene Generator',
+            },
+            body: JSON.stringify({
+              model: openRouterModel,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Roteiro:\n\n${contentToProcess}` }
+              ],
+              max_tokens: 8192,
+            }),
+          });
 
-        if (response.ok) {
-          const data = await response.json();
-          generatedText = data.choices[0].message.content;
-          break;
+          if (response.ok) {
+            const data = await response.json();
+            if (data.choices?.[0]?.message?.content) {
+              generatedText = data.choices[0].message.content;
+              console.log(`OpenRouter success on attempt ${attempt + 1}`);
+              break;
+            } else {
+              lastError = 'Empty response from OpenRouter';
+              console.error('OpenRouter returned empty content');
+            }
+          } else {
+            lastError = await response.text();
+            console.error(`OpenRouter response status ${response.status}:`, lastError);
+          }
+          
+          // If rate limited and not last attempt, wait and retry
+          if ((response.status === 429 || response.status === 503 || response.status === 502) && attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAYS[attempt];
+            console.log(`Rate limited or server error (${response.status}), waiting ${delay/1000}s before retry ${attempt + 1}/${MAX_RETRIES}...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          
+          if (!response.ok && attempt === MAX_RETRIES) {
+            throw new Error(`OpenRouter ${model} API error: ${response.status}${response.status === 429 ? ' - Rate limit exceeded after retries' : ''}`);
+          }
+        } catch (fetchError) {
+          console.error(`Fetch error on attempt ${attempt + 1}:`, fetchError);
+          if (attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAYS[attempt];
+            console.log(`Network error, waiting ${delay/1000}s before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          throw fetchError;
         }
-        
-        lastError = await response.text();
-        
-        // If rate limited and not last attempt, wait and retry
-        if (response.status === 429 && attempt < MAX_RETRIES) {
-          const delay = RETRY_DELAYS[attempt];
-          console.log(`Rate limited (429), waiting ${delay/1000}s before retry ${attempt + 1}/${MAX_RETRIES}...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        
-        console.error(`OpenRouter ${model} API error:`, lastError);
-        throw new Error(`OpenRouter ${model} API error: ${response.status}${response.status === 429 ? ' - Rate limit exceeded after retries' : ''}`);
       }
       
       if (!generatedText) {
-        throw new Error(`Failed to get response from OpenRouter (${model}) after retries`);
+        throw new Error(`Failed to get response from OpenRouter (${model}) after ${MAX_RETRIES + 1} attempts. Last error: ${lastError}`);
       }
     } else {
       throw new Error('Invalid model specified. Use "groq", "gemini", "qwen", "deepseek", or "llama".');
