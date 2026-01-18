@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -82,6 +82,10 @@ export function ImageGallery({
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  
+  // Image viewer with navigation
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
   
   // Ref to control stopping batch generation
   const stopBatchRef = useRef(false);
@@ -168,6 +172,33 @@ export function ImageGallery({
 
   const albums = Object.keys(groupedImages);
   const displayImages = activeAlbum === 'all' ? images : groupedImages[activeAlbum] || [];
+
+  // Viewer navigation
+  const openViewer = (index: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setViewerIndex(index);
+    setViewerOpen(true);
+  };
+
+  const goToPrevImage = () => {
+    setViewerIndex((prev) => (prev > 0 ? prev - 1 : displayImages.length - 1));
+  };
+
+  const goToNextImage = () => {
+    setViewerIndex((prev) => (prev < displayImages.length - 1 ? prev + 1 : 0));
+  };
+
+  // Keyboard navigation for viewer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!viewerOpen) return;
+      if (e.key === 'ArrowLeft') goToPrevImage();
+      if (e.key === 'ArrowRight') goToNextImage();
+      if (e.key === 'Escape') setViewerOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerOpen, displayImages.length]);
 
   const handleGenerate = async (promptText: string, retryCount = 0): Promise<boolean> => {
     // Check credentials
@@ -744,7 +775,7 @@ export function ImageGallery({
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {displayImages.map((image) => (
+            {displayImages.map((image, index) => (
               <div
                 key={image.id}
                 className={cn(
@@ -773,26 +804,14 @@ export function ImageGallery({
                 </div>
 
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <Dialog>
-                    <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button size="icon" variant="secondary" className="h-8 w-8">
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>Visualizar Imagem</DialogTitle>
-                      </DialogHeader>
-                      <img
-                        src={image.image_url}
-                        alt={image.scene_description || 'Generated image'}
-                        className="w-full h-auto rounded-lg"
-                      />
-                      {image.prompt_used && (
-                        <p className="text-sm text-muted-foreground mt-2">{image.prompt_used}</p>
-                      )}
-                    </DialogContent>
-                  </Dialog>
+                  <Button 
+                    size="icon" 
+                    variant="secondary" 
+                    className="h-8 w-8"
+                    onClick={(e) => openViewer(index, e)}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="secondary"
@@ -819,6 +838,58 @@ export function ImageGallery({
               </div>
             ))}
           </div>
+
+          {/* Fullscreen Image Viewer with Navigation */}
+          <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+            <DialogContent className="max-w-5xl max-h-[90vh] p-2">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Visualizar Imagem</DialogTitle>
+              </DialogHeader>
+              
+              <div className="relative">
+                {/* Navigation buttons */}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full opacity-80 hover:opacity-100"
+                  onClick={goToPrevImage}
+                >
+                  <ChevronLeft className="w-6 h-6" />
+                </Button>
+                
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full opacity-80 hover:opacity-100"
+                  onClick={goToNextImage}
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </Button>
+
+                {/* Image */}
+                {displayImages[viewerIndex] && (
+                  <img
+                    src={displayImages[viewerIndex].image_url}
+                    alt={displayImages[viewerIndex].scene_description || 'Generated image'}
+                    className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                  />
+                )}
+              </div>
+
+              {/* Image info and counter */}
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Imagem {viewerIndex + 1} de {displayImages.length}</span>
+                  <span>Use ← → para navegar</span>
+                </div>
+                {displayImages[viewerIndex]?.prompt_used && (
+                  <p className="text-sm text-muted-foreground bg-muted/50 p-2 rounded-lg">
+                    {displayImages[viewerIndex].prompt_used}
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 

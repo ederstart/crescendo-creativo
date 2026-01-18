@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Wand2, Copy, Save, Star, FileText, StopCircle, Settings2, Trash2, Undo2, RefreshCw } from 'lucide-react';
+import { Loader2, Wand2, Copy, Save, Star, FileText, StopCircle, Settings2, Trash2, Undo2, RefreshCw, Youtube } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -65,6 +65,10 @@ export function TranscriptionToScript({
   const [previousResult, setPreviousResult] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   
+  // YouTube transcript
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [fetchingYoutube, setFetchingYoutube] = useState(false);
+  
   // Custom prompt
   const [customPrompt, setCustomPrompt] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -81,6 +85,33 @@ export function TranscriptionToScript({
   const [loadingSaved, setLoadingSaved] = useState(true);
   
   const stopRef = useRef(false);
+
+  // Fetch YouTube transcript
+  const fetchYoutubeTranscript = async () => {
+    if (!youtubeUrl.trim()) {
+      toast.error('Cole a URL do YouTube');
+      return;
+    }
+    
+    setFetchingYoutube(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('youtube-transcript', {
+        body: { videoUrl: youtubeUrl, language: 'pt' },
+      });
+      
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      
+      setTranscription(data.plainText || '');
+      toast.success(`Transcrição extraída! (${data.itemCount} segmentos)`);
+      setYoutubeUrl('');
+    } catch (error) {
+      console.error('YouTube transcript error:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao buscar transcrição');
+    } finally {
+      setFetchingYoutube(false);
+    }
+  };
 
   // Persist to localStorage
   useEffect(() => {
@@ -387,6 +418,32 @@ export function TranscriptionToScript({
           </div>
         </div>
       )}
+
+      {/* YouTube Transcript Import */}
+      <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+        <Label className="text-sm font-medium flex items-center gap-2 mb-2">
+          <Youtube className="w-4 h-4 text-red-500" />
+          Importar do YouTube
+        </Label>
+        <div className="flex gap-2">
+          <Input
+            value={youtubeUrl}
+            onChange={(e) => setYoutubeUrl(e.target.value)}
+            placeholder="Cole a URL do vídeo do YouTube..."
+            className="flex-1"
+          />
+          <Button
+            onClick={fetchYoutubeTranscript}
+            disabled={fetchingYoutube || !youtubeUrl.trim()}
+            size="sm"
+          >
+            {fetchingYoutube ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Extrair'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Extrai automaticamente as legendas do vídeo
+        </p>
+      </div>
 
       {/* Transcription Input */}
       <div>
