@@ -27,7 +27,9 @@ import {
   Image as ImageIcon,
   Sparkles,
   RefreshCw,
-  FileText
+  FileText,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -126,6 +128,10 @@ export default function AILabs() {
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [selectedImageForRegen, setSelectedImageForRegen] = useState<typeof images[0] | null>(null);
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
+  
+  // Gallery viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   // Load settings
   useEffect(() => {
@@ -1139,26 +1145,18 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
                     </div>
 
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <Dialog>
-                        <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button size="icon" variant="secondary" className="h-8 w-8">
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl">
-                          <DialogHeader>
-                            <DialogTitle>Visualizar Imagem</DialogTitle>
-                          </DialogHeader>
-                          <img
-                            src={image.image_url}
-                            alt={image.scene_description || 'Generated image'}
-                            className="w-full h-auto rounded-lg"
-                          />
-                          {image.prompt_used && (
-                            <p className="text-sm text-muted-foreground mt-2">{image.prompt_used}</p>
-                          )}
-                        </DialogContent>
-                      </Dialog>
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewerIndex(images.findIndex(img => img.id === image.id));
+                          setViewerOpen(true);
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
                       <Button
                         size="icon"
                         variant="secondary"
@@ -1197,6 +1195,67 @@ Output ONLY the scene prompts in the exact format specified, no additional text.
                   </div>
                 ))}
               </div>
+
+              {/* Fullscreen Image Viewer with Navigation */}
+              <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+                <DialogContent className="max-w-5xl max-h-[90vh] p-2">
+                  <DialogHeader className="sr-only">
+                    <DialogTitle>Visualizar Imagem</DialogTitle>
+                  </DialogHeader>
+                  
+                  <div className="relative">
+                    {/* Navigation buttons */}
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full opacity-80 hover:opacity-100"
+                      onClick={() => setViewerIndex(prev => prev > 0 ? prev - 1 : images.length - 1)}
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </Button>
+                    
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full opacity-80 hover:opacity-100"
+                      onClick={() => setViewerIndex(prev => prev < images.length - 1 ? prev + 1 : 0)}
+                    >
+                      <ChevronRight className="w-6 h-6" />
+                    </Button>
+
+                    {/* Image */}
+                    {images[viewerIndex] && (
+                      <img
+                        src={images[viewerIndex].image_url}
+                        alt={images[viewerIndex].scene_description || 'Generated image'}
+                        className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+                      />
+                    )}
+                  </div>
+
+                  {/* Image info and counter */}
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Imagem {viewerIndex + 1} de {images.length}</span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => images[viewerIndex] && openRegenerateDialog(images[viewerIndex])}
+                        >
+                          <RefreshCw className="w-4 h-4 mr-1" />
+                          Regenerar
+                        </Button>
+                      </div>
+                    </div>
+                    {images[viewerIndex]?.prompt_used && (
+                      <p className="text-sm text-muted-foreground bg-muted/50 p-2 rounded-lg max-h-24 overflow-y-auto">
+                        {images[viewerIndex].prompt_used}
+                      </p>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </>
           ) : (
             <div className="text-center py-12">

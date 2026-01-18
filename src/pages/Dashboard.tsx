@@ -44,17 +44,19 @@ export default function Dashboard() {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user?.id);
 
+    // Count 'done' status (this is what's used in the database)
     const { count: completedCount } = await supabase
       .from('scripts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user?.id)
-      .eq('status', 'completed');
+      .eq('status', 'done');
 
+    // Count 'draft' and 'transcription' as in progress
     const { count: inProgressCount } = await supabase
       .from('scripts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user?.id)
-      .eq('status', 'in_progress');
+      .in('status', ['draft', 'transcription']);
 
     const { count: moodBoardsCount } = await supabase
       .from('mood_boards')
@@ -171,12 +173,14 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded-full ${
-                      script.status === 'completed' ? 'bg-green-500/20 text-green-500' :
-                      script.status === 'in_progress' ? 'bg-secondary/20 text-secondary' :
+                      script.status === 'done' ? 'bg-green-500/20 text-green-500' :
+                      script.status === 'transcription' ? 'bg-blue-500/20 text-blue-500' :
+                      script.status === 'draft' ? 'bg-secondary/20 text-secondary' :
                       'bg-muted text-muted-foreground'
                     }`}>
-                      {script.status === 'completed' ? 'Concluído' : 
-                       script.status === 'in_progress' ? 'Em progresso' : 'Rascunho'}
+                      {script.status === 'done' ? 'Concluído' : 
+                       script.status === 'transcription' ? 'Transcrição' :
+                       script.status === 'draft' ? 'Rascunho' : 'Rascunho'}
                     </span>
                   </Link>
                 </li>
