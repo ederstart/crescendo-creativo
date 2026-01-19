@@ -179,6 +179,7 @@ async function createProject(account: Account, projectName?: string): Promise<st
 }
 
 // Gerar imagem - baseado na Project.ts
+// Retorna TODAS as variações geradas (Whisk gera 2 por padrão)
 async function generateImage(
   account: Account,
   projectId: string,
@@ -186,7 +187,7 @@ async function generateImage(
   aspectRatio: string = "IMAGE_ASPECT_RATIO_LANDSCAPE",
   model: string = "IMAGEN_3_5",
   seed: number = 0
-): Promise<{ encodedImage: string; mediaGenerationId: string; seed: number }> {
+): Promise<{ images: Array<{ encodedImage: string; mediaGenerationId: string; seed: number }> }> {
   console.log('Gerando imagem...');
   console.log('Prompt:', prompt);
   console.log('Aspect Ratio:', aspectRatio);
@@ -216,19 +217,25 @@ async function generateImage(
     }
   );
 
-  const img = generationResponse.imagePanels?.[0]?.generatedImages?.[0];
+  // Capturar TODAS as imagens geradas (Whisk retorna 2 variações)
+  const allImages = generationResponse.imagePanels?.[0]?.generatedImages || [];
   
-  if (!img?.encodedImage) {
+  if (allImages.length === 0 || !allImages[0]?.encodedImage) {
     console.error('Resposta da API:', JSON.stringify(generationResponse).slice(0, 500));
     throw new Error('Nenhuma imagem foi gerada na resposta');
   }
 
-  console.log('Imagem gerada com sucesso! MediaID:', img.mediaGenerationId);
+  console.log(`Imagens geradas com sucesso! Total: ${allImages.length} variações`);
+  allImages.forEach((img: any, i: number) => {
+    console.log(`  Variação ${i + 1}: MediaID ${img.mediaGenerationId}`);
+  });
   
   return {
-    encodedImage: img.encodedImage,
-    mediaGenerationId: img.mediaGenerationId,
-    seed: img.seed
+    images: allImages.map((img: any) => ({
+      encodedImage: img.encodedImage,
+      mediaGenerationId: img.mediaGenerationId,
+      seed: img.seed
+    }))
   };
 }
 
@@ -304,10 +311,24 @@ serve(async (req) => {
       apiModel
     );
 
+    // Retornar todas as variações + manter compatibilidade com código antigo
+    const primaryImage = result.images[0];
+    const alternateImage = result.images[1];
+
     return new Response(JSON.stringify({ 
-      imageBase64: result.encodedImage,
-      mediaId: result.mediaGenerationId,
-      seed: result.seed,
+      // Array com todas as variações
+      images: result.images.map(img => ({
+        imageBase64: img.encodedImage,
+        mediaId: img.mediaGenerationId,
+        seed: img.seed
+      })),
+      // Manter compatibilidade (primeira imagem)
+      imageBase64: primaryImage.encodedImage,
+      mediaId: primaryImage.mediaGenerationId,
+      seed: primaryImage.seed,
+      // Segunda variação (se existir)
+      alternateImageBase64: alternateImage?.encodedImage,
+      alternateMediaId: alternateImage?.mediaGenerationId,
       prompt: finalPrompt,
       aspectRatio: apiAspectRatio,
       model: apiModel,

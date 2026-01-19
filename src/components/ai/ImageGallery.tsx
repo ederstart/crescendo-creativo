@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, ChevronLeft, ChevronRight, Pencil, X } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, ChevronLeft, ChevronRight, Pencil, X, RotateCcw } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +18,7 @@ interface GeneratedImage {
   id: string;
   prompt_used?: string;
   image_url: string;
+  alternate_image_url?: string; // Segunda variação do Whisk
   scene_description?: string;
   subject_image_url?: string;
   created_at?: string;
@@ -86,12 +87,22 @@ export function ImageGallery({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   
+  // Regenerate mode
+  const [isRegenerateMode, setIsRegenerateMode] = useState(false);
+  const [regeneratePrompt, setRegeneratePrompt] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  
+  // Active variant for each image (0 = primary, 1 = alternate)
+  const [activeVariants, setActiveVariants] = useState<Record<string, number>>({});
+  
   // Ref to control stopping batch generation
   const stopBatchRef = useRef(false);
   // Track failed prompts
   const failedPromptsRef = useRef<string[]>([]);
   // Track if auto-start was triggered
   const autoStartTriggeredRef = useRef(false);
+  // Track remaining prompts when stopped
+  const remainingPromptsRef = useRef<string[]>([]);
 
   // Load favorite template on mount (ignore legacy initialStyleTemplate)
   useEffect(() => {
@@ -215,11 +226,36 @@ export function ImageGallery({
       if (!viewerOpen) return;
       if (e.key === 'ArrowLeft') goToPrevImage();
       if (e.key === 'ArrowRight') goToNextImage();
-      if (e.key === 'Escape') setViewerOpen(false);
+      if (e.key === 'Escape') {
+        setViewerOpen(false);
+        setIsRegenerateMode(false);
+        setRegeneratePrompt('');
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewerOpen, displayImages.length]);
+
+  // Helper to get current image URL based on active variant
+  const getImageUrl = (image: GeneratedImage) => {
+    const variant = activeVariants[image.id] || 0;
+    if (variant === 1 && image.alternate_image_url) {
+      return image.alternate_image_url;
+    }
+    return image.image_url;
+  };
+
+  // Toggle between image variants
+  const toggleVariant = (imageId: string, direction: 'prev' | 'next', e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const image = displayImages.find(img => img.id === imageId);
+    if (!image?.alternate_image_url) return;
+    
+    setActiveVariants(prev => ({
+      ...prev,
+      [imageId]: prev[imageId] === 1 ? 0 : 1
+    }));
+  };
 
   const handleGenerate = async (promptText: string, retryCount = 0): Promise<boolean> => {
     // Check credentials
@@ -272,8 +308,16 @@ export function ImageGallery({
         ? data.imageBase64 
         : `data:image/png;base64,${data.imageBase64}`;
 
+      // Get alternate image if available
+      const alternateUrl = data.alternateImageBase64 
+        ? (data.alternateImageBase64.startsWith('data:') 
+            ? data.alternateImageBase64 
+            : `data:image/png;base64,${data.alternateImageBase64}`)
+        : undefined;
+
       await onImageGenerated({
         image_url: imageUrl,
+        alternate_image_url: alternateUrl,
         prompt_used: data.prompt || cleanedPrompt,
         scene_description: cleanedPrompt.substring(0, 100),
         subject_image_url: subjectImageUrl || undefined,
@@ -310,19 +354,25 @@ export function ImageGallery({
     // Reset stop flag and failed prompts
     stopBatchRef.current = false;
     failedPromptsRef.current = [];
+    remainingPromptsRef.current = [];
 
     const sceneCount = prompts.filter(p => /^(?:CENA|Cena|cena)\s*\d{1,3}\s*:/i.test(p)).length || prompts.length;
     toast.info(`Detectados ${sceneCount} prompts para gerar...`);
     
     setBatchProgress({ current: 0, total: prompts.length });
     
+    let lastProcessedIndex = -1;
+    
     for (let i = 0; i < prompts.length; i++) {
       // Check if user requested to stop
       if (stopBatchRef.current) {
+        // Save remaining prompts for later
+        remainingPromptsRef.current = prompts.slice(i);
         toast.info(`Geração interrompida. ${i} de ${prompts.length} imagens geradas.`);
         break;
       }
       
+      lastProcessedIndex = i;
       setBatchProgress({ current: i + 1, total: prompts.length });
       toast.info(`Gerando imagem ${i + 1} de ${prompts.length}...`);
       
@@ -335,6 +385,7 @@ export function ImageGallery({
       
       // If user wants to stop, break
       if (stopBatchRef.current) {
+        remainingPromptsRef.current = prompts.slice(i + 1);
         break;
       }
       
@@ -352,10 +403,19 @@ export function ImageGallery({
     }
     
     // Show results
-    const successCount = prompts.length - failedPromptsRef.current.length;
+    const processedCount = lastProcessedIndex + 1;
+    const successCount = processedCount - failedPromptsRef.current.length;
     const failedCount = failedPromptsRef.current.length;
     
-    if (!stopBatchRef.current) {
+    if (stopBatchRef.current) {
+      // Manter prompts restantes na textarea quando parar
+      if (remainingPromptsRef.current.length > 0) {
+        setBatchPrompts(remainingPromptsRef.current.join('\n'));
+        toast.info(`${remainingPromptsRef.current.length} prompts restantes mantidos para continuar depois`);
+      } else {
+        setBatchPrompts('');
+      }
+    } else {
       if (failedCount === 0) {
         toast.success(`Todas as ${successCount} imagens foram geradas!`);
       } else {
@@ -370,14 +430,39 @@ export function ImageGallery({
           { duration: 10000 }
         );
       }
+      // Limpar apenas se não parou
+      setBatchPrompts('');
     }
-    
-    setBatchPrompts('');
   };
 
   const handleStopBatch = () => {
     stopBatchRef.current = true;
-    toast.info('Parando geração após a imagem atual...');
+    toast.info('Parando geração após a imagem atual... Prompts restantes serão mantidos.');
+  };
+
+  // Regenerate image with modified prompt
+  const handleRegenerate = async () => {
+    if (!regeneratePrompt.trim()) {
+      toast.error('Digite um prompt');
+      return;
+    }
+    
+    setIsRegenerating(true);
+    const success = await handleGenerate(regeneratePrompt);
+    
+    if (success) {
+      toast.success('Nova imagem gerada! Veja no topo da galeria.');
+      setIsRegenerateMode(false);
+      setRegeneratePrompt('');
+      setViewerOpen(false);
+    }
+    
+    setIsRegenerating(false);
+  };
+
+  const openRegenerateMode = (prompt: string) => {
+    setRegeneratePrompt(prompt);
+    setIsRegenerateMode(true);
   };
 
   const toggleImageSelection = (id: string) => {
@@ -908,10 +993,37 @@ export function ImageGallery({
                 onClick={() => toggleImageSelection(image.id)}
               >
                 <img
-                  src={image.image_url}
+                  src={getImageUrl(image)}
                   alt={image.scene_description || 'Generated image'}
                   className="w-full h-full object-cover"
                 />
+                
+                {/* Variant navigation arrows */}
+                {image.alternate_image_url && (
+                  <>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="absolute left-1 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-90 transition-opacity z-10"
+                      onClick={(e) => toggleVariant(image.id, 'prev', e)}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-90 transition-opacity z-10"
+                      onClick={(e) => toggleVariant(image.id, 'next', e)}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    {/* Variant indicator */}
+                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className={cn("w-2 h-2 rounded-full", (activeVariants[image.id] || 0) === 0 ? "bg-white" : "bg-white/40")} />
+                      <div className={cn("w-2 h-2 rounded-full", (activeVariants[image.id] || 0) === 1 ? "bg-white" : "bg-white/40")} />
+                    </div>
+                  </>
+                )}
                 
                 <div className={cn(
                   "absolute top-2 left-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
@@ -939,7 +1051,7 @@ export function ImageGallery({
                     className="h-8 w-8"
                     onClick={(e) => {
                       e.stopPropagation();
-                      downloadImage(image.image_url, `imagen-${image.id}.png`);
+                      downloadImage(getImageUrl(image), `imagen-${image.id}.png`);
                     }}
                   >
                     <Download className="w-4 h-4" />
@@ -998,15 +1110,66 @@ export function ImageGallery({
               </div>
 
               {/* Image info and counter */}
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 space-y-3">
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Imagem {viewerIndex + 1} de {displayImages.length}</span>
                   <span>Use ← → para navegar</span>
                 </div>
+                
+                {/* Regenerate section */}
                 {displayImages[viewerIndex]?.prompt_used && (
-                  <p className="text-sm text-muted-foreground bg-muted/50 p-2 rounded-lg">
-                    {displayImages[viewerIndex].prompt_used}
-                  </p>
+                  <div className="space-y-2">
+                    {!isRegenerateMode ? (
+                      <>
+                        <p className="text-sm text-muted-foreground bg-muted/50 p-2 rounded-lg">
+                          {displayImages[viewerIndex].prompt_used}
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full"
+                          onClick={() => openRegenerateMode(displayImages[viewerIndex].prompt_used || '')}
+                        >
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          Editar e Regenerar
+                        </Button>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={regeneratePrompt}
+                          onChange={(e) => setRegeneratePrompt(e.target.value)}
+                          rows={3}
+                          className="text-sm"
+                          placeholder="Edite o prompt..."
+                        />
+                        <div className="flex gap-2">
+                          <Button 
+                            onClick={handleRegenerate}
+                            disabled={isRegenerating}
+                            className="flex-1"
+                            variant="fire"
+                          >
+                            {isRegenerating ? (
+                              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Gerando...</>
+                            ) : (
+                              <><RotateCcw className="w-4 h-4 mr-2" />Gerar Nova Imagem</>
+                            )}
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            onClick={() => {
+                              setIsRegenerateMode(false);
+                              setRegeneratePrompt('');
+                            }}
+                            disabled={isRegenerating}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </DialogContent>

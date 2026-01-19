@@ -9,6 +9,7 @@ interface GeneratedImage {
   scene_description?: string;
   prompt_used?: string;
   image_url: string;
+  alternate_image_url?: string; // Segunda variação gerada pelo Whisk
   subject_image_url?: string;
   created_at: string;
 }
