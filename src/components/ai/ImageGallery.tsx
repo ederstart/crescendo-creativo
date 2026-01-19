@@ -5,14 +5,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Download, Trash2, Check, Eye, Plus, FolderOpen, Save, StopCircle, Star, ChevronLeft, ChevronRight, Pencil, X } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTrigger, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import JSZip from 'jszip';
 import { useStyleTemplates, StyleTemplate } from '@/hooks/useStyleTemplates';
-import { useAISettings } from '@/hooks/useAISettings';
 
 interface GeneratedImage {
   id: string;
@@ -65,8 +65,7 @@ export function ImageGallery({
   autoStartBatch,
   onAutoStartBatchComplete,
 }: ImageGalleryProps) {
-  const { settings } = useAISettings();
-  const { templates: styleTemplates, createTemplate, setFavorite, favoriteTemplate } = useStyleTemplates();
+  const { templates: styleTemplates, createTemplate, updateTemplate, deleteTemplate, setFavorite, favoriteTemplate, refetch: refetchStyleTemplates } = useStyleTemplates();
   
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
@@ -82,6 +81,9 @@ export function ImageGallery({
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [editingTemplate, setEditingTemplate] = useState<StyleTemplate | null>(null);
+  const [editTemplateName, setEditTemplateName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   
   // Image viewer with navigation
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -94,15 +96,16 @@ export function ImageGallery({
   // Track if auto-start was triggered
   const autoStartTriggeredRef = useRef(false);
 
-  // Sync with prop when it changes
+  // Sync with prop when it changes or load favorite template
   useEffect(() => {
-    if (initialStyleTemplate !== undefined) {
+    if (initialStyleTemplate !== undefined && initialStyleTemplate !== '') {
       setStyleTemplate(initialStyleTemplate);
     } else if (favoriteTemplate) {
       // Carregar template favorito
       setStyleTemplate(favoriteTemplate.content);
+      setSelectedTemplateId(favoriteTemplate.id);
     }
-  }, [initialStyleTemplate]);
+  }, [initialStyleTemplate, favoriteTemplate]);
 
   // Apply initial prompt when received from scene generator
   useEffect(() => {
@@ -159,7 +162,36 @@ export function ImageGallery({
 
   const handleLoadTemplate = (template: StyleTemplate) => {
     setStyleTemplate(template.content);
+    setSelectedTemplateId(template.id);
     toast.success(`Template "${template.name}" carregado`);
+  };
+
+  const handleClearTemplate = () => {
+    setStyleTemplate('');
+    setSelectedTemplateId(null);
+    toast.info('Template desmarcado');
+  };
+
+  const handleEditTemplate = async () => {
+    if (!editingTemplate || !editTemplateName.trim()) return;
+    await updateTemplate(editingTemplate.id, { name: editTemplateName, content: styleTemplate });
+    setEditingTemplate(null);
+    setEditTemplateName('');
+    await refetchStyleTemplates();
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!confirm('Excluir este template?')) return;
+    await deleteTemplate(id);
+    if (selectedTemplateId === id) {
+      setSelectedTemplateId(null);
+    }
+    await refetchStyleTemplates();
+  };
+
+  const handleSetFavorite = async (id: string) => {
+    await setFavorite(id);
+    await refetchStyleTemplates();
   };
 
   // Group images by date for album-like experience
@@ -520,51 +552,133 @@ export function ImageGallery({
           </div>
         </div>
 
-        {/* Template de Estilo - Redesigned */}
+        {/* Template de Estilo - Improved UX */}
         <Card className="border-dashed">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">Template de Estilo</Label>
-              <div className="flex gap-1">
-                {styleTemplates.length > 0 && (
-                  <Select onValueChange={(id) => {
-                    const t = styleTemplates.find(t => t.id === id);
-                    if (t) handleLoadTemplate(t);
-                  }}>
-                    <SelectTrigger className="h-8 w-32 text-xs">
-                      <SelectValue placeholder="Carregar..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {styleTemplates.map(t => (
-                        <SelectItem key={t.id} value={t.id}>
-                          <div className="flex items-center gap-1">
-                            {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />}
-                            <span>{t.name}</span>
+              <div className="flex gap-2">
+                {/* Main dropdown for template selection */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8">
+                      {selectedTemplateId ? (
+                        <>
+                          {styleTemplates.find(t => t.id === selectedTemplateId)?.is_favorite && (
+                            <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />
+                          )}
+                          <span className="max-w-24 truncate">
+                            {styleTemplates.find(t => t.id === selectedTemplateId)?.name || 'Selecionar'}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Selecionar template</span>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64 bg-background">
+                    {styleTemplates.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        Nenhum template salvo.<br />
+                        Crie um abaixo!
+                      </div>
+                    ) : (
+                      <>
+                        {styleTemplates.map(t => (
+                          <div key={t.id} className="group relative">
+                            <DropdownMenuItem
+                              className={cn(
+                                "flex items-center justify-between pr-20 cursor-pointer",
+                                selectedTemplateId === t.id && "bg-accent"
+                              )}
+                              onClick={() => handleLoadTemplate(t)}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                {t.is_favorite && (
+                                  <Star className="w-3 h-3 flex-shrink-0 fill-yellow-500 text-yellow-500" />
+                                )}
+                                <span className="truncate">{t.name}</span>
+                              </div>
+                              {selectedTemplateId === t.id && (
+                                <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                              )}
+                            </DropdownMenuItem>
+                            {/* Action buttons on hover */}
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetFavorite(t.id);
+                                }}
+                                title={t.is_favorite ? 'Remover favorito' : 'Favoritar'}
+                              >
+                                <Star className={cn(
+                                  "w-3 h-3",
+                                  t.is_favorite ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground"
+                                )} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingTemplate(t);
+                                  setEditTemplateName(t.name);
+                                  setStyleTemplate(t.content);
+                                  setSelectedTemplateId(t.id);
+                                }}
+                                title="Editar"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTemplate(t.id);
+                                }}
+                                title="Excluir"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={saveStyleTemplate}
-                  disabled={savingStyle}
-                  title="Salvar como padrão"
-                >
-                  {savingStyle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                </Button>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-muted-foreground cursor-pointer"
+                          onClick={handleClearTemplate}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Limpar seleção
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Save as new template */}
                 <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-8 w-8" title="Salvar como novo">
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="h-8 w-8" 
+                      title="Salvar como novo template"
+                      disabled={!styleTemplate.trim()}
+                    >
                       <Plus className="w-4 h-4" />
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Salvar Template de Estilo</DialogTitle>
+                      <DialogTitle>Salvar Novo Template</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
@@ -578,7 +692,7 @@ export function ImageGallery({
                       </div>
                       <div>
                         <Label>Conteúdo</Label>
-                        <Textarea value={styleTemplate} readOnly rows={3} className="mt-1 text-sm" />
+                        <Textarea value={styleTemplate} readOnly rows={3} className="mt-1 text-sm bg-muted/50" />
                       </div>
                       <Button onClick={handleSaveAsNewTemplate} className="w-full">
                         <Save className="w-4 h-4 mr-2" />Salvar Template
@@ -589,30 +703,48 @@ export function ImageGallery({
               </div>
             </div>
             
+            {/* Edit mode indicator */}
+            {editingTemplate && (
+              <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <Pencil className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-amber-600 flex-1">Editando: {editingTemplate.name}</span>
+                <Input
+                  value={editTemplateName}
+                  onChange={e => setEditTemplateName(e.target.value)}
+                  placeholder="Nome do template"
+                  className="w-40 h-7 text-sm"
+                />
+                <Button size="sm" className="h-7" onClick={handleEditTemplate}>
+                  Salvar
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-7"
+                  onClick={() => {
+                    setEditingTemplate(null);
+                    setEditTemplateName('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            )}
+            
             <Textarea
               value={styleTemplate}
-              onChange={(e) => setStyleTemplate(e.target.value)}
-              placeholder="Ex: cartoon style, white background, high quality..."
+              onChange={(e) => {
+                setStyleTemplate(e.target.value);
+                // If editing a template and content changes, keep edit mode
+              }}
+              placeholder="Ex: cartoon style, white background, high quality, vibrant colors..."
               rows={2}
               className="text-sm"
             />
             
-            {styleTemplates.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {styleTemplates.slice(0, 6).map(t => (
-                  <Button
-                    key={t.id}
-                    variant={styleTemplate === t.content ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    onClick={() => handleLoadTemplate(t)}
-                  >
-                    {t.is_favorite && <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />}
-                    {t.name}
-                  </Button>
-                ))}
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">
+              O template de estilo é combinado automaticamente com cada prompt para manter consistência visual.
+            </p>
           </CardContent>
         </Card>
 
