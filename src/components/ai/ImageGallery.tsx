@@ -30,7 +30,7 @@ interface ImageGalleryProps {
   onImageGenerated: (image: Omit<GeneratedImage, 'id' | 'created_at'>) => void;
   onDeleteImage: (id: string) => void;
   onDeleteMultiple: (ids: string[]) => void;
-  onSaveStyleTemplate: (template: string) => void;
+  onSaveStyleTemplate?: (template: string) => void;
   onRefetch?: () => void;
   initialPrompt?: string;
   onPromptUsed?: () => void;
@@ -51,12 +51,10 @@ const RETRY_DELAYS = [10000, 20000, 30000];
 
 export function ImageGallery({
   googleCookie,
-  styleTemplate: initialStyleTemplate,
   images,
   onImageGenerated,
   onDeleteImage,
   onDeleteMultiple,
-  onSaveStyleTemplate,
   onRefetch,
   initialPrompt,
   onPromptUsed,
@@ -69,14 +67,13 @@ export function ImageGallery({
   
   const [prompt, setPrompt] = useState('');
   const [subjectImageUrl, setSubjectImageUrl] = useState('');
-  const [styleTemplate, setStyleTemplate] = useState(initialStyleTemplate || '');
+  const [styleTemplate, setStyleTemplate] = useState('');
   const [aspectRatio, setAspectRatio] = useState('landscape');
   const [loading, setLoading] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [batchPrompts, setBatchPrompts] = useState('');
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [activeAlbum, setActiveAlbum] = useState<string>('all');
-  const [savingStyle, setSavingStyle] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
@@ -96,16 +93,13 @@ export function ImageGallery({
   // Track if auto-start was triggered
   const autoStartTriggeredRef = useRef(false);
 
-  // Sync with prop when it changes or load favorite template
+  // Load favorite template on mount (ignore legacy initialStyleTemplate)
   useEffect(() => {
-    if (initialStyleTemplate !== undefined && initialStyleTemplate !== '') {
-      setStyleTemplate(initialStyleTemplate);
-    } else if (favoriteTemplate) {
-      // Carregar template favorito
+    if (favoriteTemplate) {
       setStyleTemplate(favoriteTemplate.content);
       setSelectedTemplateId(favoriteTemplate.id);
     }
-  }, [initialStyleTemplate, favoriteTemplate]);
+  }, [favoriteTemplate]);
 
   // Apply initial prompt when received from scene generator
   useEffect(() => {
@@ -144,11 +138,6 @@ export function ImageGallery({
       autoStartTriggeredRef.current = false;
     }
   }, [autoStartBatch]);
-  const saveStyleTemplate = async () => {
-    setSavingStyle(true);
-    await onSaveStyleTemplate(styleTemplate);
-    setSavingStyle(false);
-  };
 
   const handleSaveAsNewTemplate = async () => {
     if (!newTemplateName.trim() || !styleTemplate.trim()) {

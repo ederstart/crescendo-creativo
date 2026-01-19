@@ -522,14 +522,10 @@ export default function AIStudio() {
             </div>
             <ImageGallery
               googleCookie={settings?.google_cookie}
-              styleTemplate={settings?.style_template}
               images={images}
               onImageGenerated={saveImage}
               onDeleteImage={deleteImage}
               onDeleteMultiple={deleteMultiple}
-              onSaveStyleTemplate={async (template) => {
-                await saveSettings({ style_template: template });
-              }}
               onRefetch={refetchImages}
               initialPrompt={imagePromptFromScene}
               onPromptUsed={() => setImagePromptFromScene('')}
