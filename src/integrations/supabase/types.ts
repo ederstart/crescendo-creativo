@@ -147,6 +147,7 @@ export type Database = {
       }
       generated_images: {
         Row: {
+          alternate_image_url: string | null
           created_at: string
           id: string
           image_url: string
@@ -157,6 +158,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          alternate_image_url?: string | null
           created_at?: string
           id?: string
           image_url: string
@@ -167,6 +169,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          alternate_image_url?: string | null
           created_at?: string
           id?: string
           image_url?: string
