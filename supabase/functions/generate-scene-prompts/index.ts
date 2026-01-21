@@ -81,12 +81,26 @@ serve(async (req) => {
     }
 
     // Determine scene count for this batch
-    let sceneCount = scenesPerBatch || numberOfScenes || BATCH_SIZE;
-    if (splitMode === 'characters' && charactersPerScene) {
+    // IMPORTANT: If scenesPerBatch is explicitly provided, use it directly!
+    // The frontend already calculated the correct number of scenes for this batch.
+    // Only recalculate if we're processing the entire script at once (no batch info).
+    let sceneCount: number;
+    
+    if (scenesPerBatch !== undefined && scenesPerBatch > 0) {
+      // Frontend explicitly told us how many scenes to generate for this batch
+      sceneCount = scenesPerBatch;
+    } else if (numberOfScenes !== undefined && numberOfScenes > 0) {
+      // Single request (not batched) with explicit scene count
+      sceneCount = numberOfScenes;
+    } else if (splitMode === 'characters' && charactersPerScene) {
+      // Calculate based on character count (only for single, non-batched requests)
       sceneCount = Math.ceil(contentToProcess.length / charactersPerScene);
+    } else {
+      // Fallback to default
+      sceneCount = BATCH_SIZE;
     }
     
-    // Cap at BATCH_SIZE per request
+    // Cap at BATCH_SIZE per request to avoid token limits
     sceneCount = Math.min(sceneCount, BATCH_SIZE);
 
     // Context for batch processing
