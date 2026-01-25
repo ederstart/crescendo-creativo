@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { Switch } from '@/components/ui/switch';
 import type { ScriptIdea } from '@/hooks/useScriptIdeas';
+import { BatchScriptGenerator } from './BatchScriptGenerator';
 
 type ModelType = 'groq' | 'gemini' | 'qwen' | 'deepseek' | 'llama';
 
@@ -24,6 +25,10 @@ interface ScriptGeneratorProps {
   onIdeaSelect?: (idea: ScriptIdea) => void;
   showCompletedIdeas?: boolean;
   onToggleCompletedIdeas?: () => void;
+  // Batch mode
+  isBatchMode?: boolean;
+  onBatchModeChange?: (isBatch: boolean) => void;
+  onScriptSaved?: (scriptId: string) => void;
 }
 
 export function ScriptGenerator({ 
@@ -38,6 +43,9 @@ export function ScriptGenerator({
   onIdeaSelect,
   showCompletedIdeas = false,
   onToggleCompletedIdeas,
+  isBatchMode = false,
+  onBatchModeChange,
+  onScriptSaved,
 }: ScriptGeneratorProps) {
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<ModelType>(
@@ -167,8 +175,65 @@ export function ScriptGenerator({
     showCompletedIdeas || idea.status !== 'done'
   );
 
+  // If batch mode, show BatchScriptGenerator
+  if (isBatchMode) {
+    return (
+      <div className="space-y-4">
+        {/* Mode Toggle */}
+        {onBatchModeChange && (
+          <div className="flex items-center gap-2 pb-4 border-b">
+            <Button
+              variant={!isBatchMode ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onBatchModeChange(false)}
+            >
+              Individual
+            </Button>
+            <Button
+              variant={isBatchMode ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onBatchModeChange(true)}
+            >
+              Lote
+            </Button>
+          </div>
+        )}
+        
+        <BatchScriptGenerator
+          groqApiKey={groqApiKey}
+          geminiApiKey={geminiApiKey}
+          openrouterApiKey={openrouterApiKey}
+          preferredModel={model}
+          systemPrompt={templateContent}
+          scriptIdeas={scriptIdeas}
+          onScriptSaved={onScriptSaved}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* Mode Toggle */}
+      {onBatchModeChange && (
+        <div className="flex items-center gap-2 pb-4 border-b">
+          <Button
+            variant={!isBatchMode ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => onBatchModeChange(false)}
+          >
+            Individual
+          </Button>
+          <Button
+            variant={isBatchMode ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => onBatchModeChange(true)}
+          >
+            Lote
+          </Button>
+        </div>
+      )}
+
       {/* Script Ideas Selector */}
       {scriptIdeas.length > 0 && (
         <div className="p-4 bg-muted/50 rounded-lg space-y-3">

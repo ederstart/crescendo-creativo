@@ -35,8 +35,11 @@ export default function AIStudio() {
   
   // Script Ideas integration
   const [showCompletedIdeas, setShowCompletedIdeas] = useState(false);
-  const { ideas: scriptIdeas, updateIdeaStatus } = useScriptIdeas(showCompletedIdeas);
+  const { ideas: scriptIdeas, updateIdeaStatus, fetchIdeas: refetchIdeas } = useScriptIdeas(showCompletedIdeas);
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
+  
+  // Script generation mode
+  const [isScriptBatchMode, setIsScriptBatchMode] = useState(false);
   
   const [generatedScript, setGeneratedScript] = useState(() => {
     return localStorage.getItem(SCRIPT_STORAGE_KEY) || '';
@@ -64,6 +67,14 @@ export default function AIStudio() {
   // Read URL params for title (from Script Ideas)
   useEffect(() => {
     const titleFromUrl = searchParams.get('title');
+    const batchModeFromUrl = searchParams.get('batchMode');
+    
+    if (batchModeFromUrl === 'true') {
+      setIsScriptBatchMode(true);
+      searchParams.delete('batchMode');
+      setSearchParams(searchParams, { replace: true });
+    }
+    
     if (titleFromUrl) {
       setScriptTitle(titleFromUrl);
       // Concatenar template existente + título ao invés de substituir
@@ -340,6 +351,12 @@ export default function AIStudio() {
                 onIdeaSelect={handleIdeaSelect}
                 showCompletedIdeas={showCompletedIdeas}
                 onToggleCompletedIdeas={() => setShowCompletedIdeas(!showCompletedIdeas)}
+                isBatchMode={isScriptBatchMode}
+                onBatchModeChange={setIsScriptBatchMode}
+                onScriptSaved={(scriptId) => {
+                  refetchIdeas();
+                  navigate(`/scripts/${scriptId}`);
+                }}
               />
             </div>
           </div>

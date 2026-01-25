@@ -378,6 +378,56 @@ export type Database = {
         }
         Relationships: []
       }
+      script_generation_queue: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          generated_content: string | null
+          id: string
+          idea_id: string | null
+          model_used: string | null
+          processed_at: string | null
+          prompt: string | null
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          generated_content?: string | null
+          id?: string
+          idea_id?: string | null
+          model_used?: string | null
+          processed_at?: string | null
+          prompt?: string | null
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          generated_content?: string | null
+          id?: string
+          idea_id?: string | null
+          model_used?: string | null
+          processed_at?: string | null
+          prompt?: string | null
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "script_generation_queue_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "script_ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       script_ideas: {
         Row: {
           created_at: string | null
