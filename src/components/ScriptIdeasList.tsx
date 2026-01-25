@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,7 +13,8 @@ import {
   Clock,
   Eye,
   EyeOff,
-  X
+  X,
+  Layers
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,12 +31,14 @@ interface ScriptIdea {
 
 export function ScriptIdeasList() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [ideas, setIdeas] = useState<ScriptIdea[]>([]);
   const [newIdea, setNewIdea] = useState('');
   const [loading, setLoading] = useState(true);
   const [batchMode, setBatchMode] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [addingToQueue, setAddingToQueue] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -316,9 +319,28 @@ export function ScriptIdeasList() {
               <X className="w-4 h-4 mr-1" />
               Limpar
             </Button>
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={() => {
+                // Navigate to AI Studio in batch mode with selected ideas
+                const selectedTitles = ideas
+                  .filter(i => selectedIds.has(i.id))
+                  .map(i => i.title)
+                  .join('\n');
+                localStorage.setItem('batch_script_ideas', JSON.stringify(
+                  ideas.filter(i => selectedIds.has(i.id)).map(i => ({ id: i.id, title: i.title }))
+                ));
+                navigate('/ai-studio?batchMode=true');
+                toast.success(`${selectedIds.size} ideias enviadas para geração em lote!`);
+              }}
+            >
+              <Layers className="w-4 h-4 mr-1" />
+              Gerar em Lote
+            </Button>
             <Button variant="destructive" size="sm" onClick={deleteSelectedIdeas}>
               <Trash2 className="w-4 h-4 mr-1" />
-              Excluir Selecionadas
+              Excluir
             </Button>
           </div>
         </div>
